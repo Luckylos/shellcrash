@@ -107,6 +107,8 @@ proxy-providers:
       dialer-proxy: 🔗 链式前置
 
 proxy-groups:
+  # ── 一、入口策略组：规则命中后的落点，日常主要在这里切换 ──
+
   - name: 🚀 节点选择
     type: select
     proxies:
@@ -136,7 +138,10 @@ proxy-groups:
       - 🇯🇵 日本
       - 🇺🇸 美国
       - 其余地区
+      - 🔗 链式落地
       - 🚀 节点选择
+
+  # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
 
   # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
   - name: 🎯 国内流量
@@ -149,6 +154,9 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇺🇸 美国
       - 其余地区
+
+  # 漏网之鱼：所有未被上面规则命中的流量。默认跟随 🚀 节点选择，
+  # 保留 DIRECT 作为末位手动开关，便于临时排障，但不作为默认出口。
 
   # 漏网之鱼：所有未被上面规则命中的流量。默认跟随 🚀 节点选择，
   # 保留 DIRECT 作为末位手动开关，便于临时排障，但不作为默认出口。
@@ -165,6 +173,32 @@ proxy-groups:
       - DIRECT
 
   # 地区主组：先走“手动指定节点”，失败后回退到“同地区自动组”
+
+  # ── 二、链式代理：两跳出口，需要时在这两个组里各选一次 ──
+  # - 🔗 链式前置：第一跳。include-all-proxies 只纳入订阅本体节点，
+  #   不会纳入 chainpool 复制出的链式节点，因此不会自我嵌套。
+  #   候选里只放地区组（地区组已排除「🔗 」节点），不放 🚀 节点选择 / 🐟 漏网之鱼，
+  #   否则会出现 落地 -> 前置 -> 节点选择 -> 落地 的环路。
+  # - 🔗 链式落地：第二跳。组内是 chainpool 复制出的全部「🔗 」节点，
+  #   它们统一经 🔗 链式前置 出站。
+
+  - name: 🔗 链式前置
+    type: select
+    include-all-proxies: true
+    proxies:
+      - 🇭🇰 香港
+      - 🇯🇵 日本
+      - 🇸🇬 新加坡
+      - 🇺🇸 美国
+      - 其余地区
+
+  - name: 🔗 链式落地
+    type: select
+    use:
+      - chainpool
+
+  # ── 三、地区主组：入口策略组的实际落点。先用「手动」，失效自动回退「自动」 ──
+
   - name: 🇭🇰 香港
     <<: *region-fallback
     proxies:
@@ -196,20 +230,37 @@ proxy-groups:
       - 其余地区-自动
 
   # 手动组：用于在同地区内手动指定具体节点
+
+  # ── 四、地区内部实现组：按地区成对排列，一般不需要直接操作 ──
+  #   -手动：同地区内手动指定具体节点（select，不测速）
+  #   -自动：同地区内自动择优（url-test），仅作同地区兜底
+
   - name: 🇭🇰 香港-手动
     <<: *region-manual
+    filter: *filter-hk
+  - name: 🇭🇰 香港-自动
+    <<: *region-auto
     filter: *filter-hk
 
   - name: 🇯🇵 日本-手动
     <<: *region-manual
     filter: *filter-jp
+  - name: 🇯🇵 日本-自动
+    <<: *region-auto
+    filter: *filter-jp
 
   - name: 🇸🇬 新加坡-手动
     <<: *region-manual
     filter: *filter-sg
+  - name: 🇸🇬 新加坡-自动
+    <<: *region-auto
+    filter: *filter-sg
 
   - name: 🇺🇸 美国-手动
     <<: *region-manual
+    filter: *filter-us
+  - name: 🇺🇸 美国-自动
+    <<: *region-auto
     filter: *filter-us
 
   - name: 其余地区-手动
@@ -217,22 +268,6 @@ proxy-groups:
     exclude-filter: *filter-chain-or-known-regions
 
   # 自动组：仅作为同地区兜底，不参与跨地区回退
-  - name: 🇭🇰 香港-自动
-    <<: *region-auto
-    filter: *filter-hk
-
-  - name: 🇯🇵 日本-自动
-    <<: *region-auto
-    filter: *filter-jp
-
-  - name: 🇸🇬 新加坡-自动
-    <<: *region-auto
-    filter: *filter-sg
-
-  - name: 🇺🇸 美国-自动
-    <<: *region-auto
-    filter: *filter-us
-
   - name: 其余地区-自动
     <<: *region-auto
     exclude-filter: *filter-chain-or-known-regions
@@ -243,20 +278,6 @@ proxy-groups:
   #   候选里只放地区组（地区组已排除「🔗 」节点），不放 🚀 节点选择 / 🐟 漏网之鱼，
   #   否则会出现 落地 -> 前置 -> 节点选择 -> 落地 的环路。
   # - 🔗 链式落地：第二跳。组内是 chainpool 复制出的全部「🔗 」节点。
-  - name: 🔗 链式前置
-    type: select
-    include-all-proxies: true
-    proxies:
-      - 🇭🇰 香港
-      - 🇯🇵 日本
-      - 🇸🇬 新加坡
-      - 🇺🇸 美国
-      - 其余地区
-
-  - name: 🔗 链式落地
-    type: select
-    use:
-      - chainpool
 
 rule-providers:
   AI:
