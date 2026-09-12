@@ -6,8 +6,9 @@
 # - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
 # - 地区组采用“手动指定节点优先，失效后自动 fallback 到同地区可连通节点”的结构。
-# - 链式代理：通过 proxy-providers 把订阅节点复制一份并附加 dialer-proxy，得到「🔗 」前缀的
-#   链式落地节点；前置节点在「🔗 链式前置」中手动选择。详见文件末尾的链式代理说明。
+# - 链式代理：由 Subconverter 在渲染时把当前单订阅源接入 HTTP proxy-provider，
+#   再附加 dialer-proxy 生成「🔗 」前缀的链式落地节点；前置节点在「🔗 链式前置」中手动选择。
+#   该方案不依赖 ShellCrash 专用目录，详见文件末尾的链式代理说明。
 
 x-filter-hk: &filter-hk "(?i)港|hk|hong ?kong|🇭🇰"
 x-filter-jp: &filter-jp "(?i)日|jp|japan|tokyo|🇯🇵"
@@ -87,17 +88,20 @@ dns:
     - "*.local"
     - "*.localhost"
 
-# 链式代理节点池：把本机已生成的订阅配置当作节点来源再读一次，
-# 复制出一份带 dialer-proxy 的链式副本。
-# - type: file + 相对路径，路径基准是 mihomo 的 -d 目录（ShellCrash 为 /etc/ShellCrash），
-#   mihomo 会拒绝 home 目录以外的绝对路径，因此这里必须用相对路径。
-# - 只读取该文件的 proxies 段，不会写回，也不需要把订阅地址写进本模板。
-# - additional-prefix 给副本加「🔗 」前缀，dialer-proxy 指向前置组，实现两跳。
+# 链式代理节点池：由 Subconverter 将当前请求的单订阅 URL 渲染到 provider。
+# - request.url 是模板渲染时的当前订阅源，不会把具体凭据写进仓库；生成的最终配置
+#   仍会包含该源地址，这是运行时拉取 provider 所必需的，不能公开分享生成文件。
+# - 源地址必须返回 Mihomo/Clash YAML 且包含 proxies 段；本模板不支持多 URL 拼接后
+#   自动拆分，也不依赖某个客户端的 ShellCrash 专用目录。
+# - type: http + 相对 path 适用于普通 Mihomo 客户端；path 基准是 mihomo 的 -d 目录。
+# - additional-prefix 给 provider 节点加「🔗 」前缀，dialer-proxy 指向前置组，实现两跳。
 # - health-check 默认关闭：开启会让每个链式节点都经前置节点额外测速一遍。
 proxy-providers:
   chainpool:
-    type: file
-    path: ./yamls/config.yaml
+    type: http
+    url: "{{ request.url }}"
+    path: ./providers/chainpool.yaml
+    interval: 86400
     health-check:
       enable: false
       url: http://www.gstatic.com/generate_204
@@ -142,8 +146,6 @@ proxy-groups:
       - 🚀 节点选择
 
   # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
-
-  # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
   - name: 🎯 国内流量
     type: select
     proxies:
@@ -154,9 +156,6 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇺🇸 美国
       - 其余地区
-
-  # 漏网之鱼：所有未被上面规则命中的流量。默认跟随 🚀 节点选择，
-  # 保留 DIRECT 作为末位手动开关，便于临时排障，但不作为默认出口。
 
   # 漏网之鱼：所有未被上面规则命中的流量。默认跟随 🚀 节点选择，
   # 保留 DIRECT 作为末位手动开关，便于临时排障，但不作为默认出口。
@@ -171,8 +170,6 @@ proxy-groups:
       - 其余地区
       - 🔗 链式落地
       - DIRECT
-
-  # 地区主组：先走“手动指定节点”，失败后回退到“同地区自动组”
 
   # ── 二、链式代理：两跳出口，需要时在这两个组里各选一次 ──
   # - 🔗 链式前置：第一跳。include-all-proxies 只纳入订阅本体节点，
@@ -229,8 +226,6 @@ proxy-groups:
       - 其余地区-手动
       - 其余地区-自动
 
-  # 手动组：用于在同地区内手动指定具体节点
-
   # ── 四、地区内部实现组：按地区成对排列，一般不需要直接操作 ──
   #   -手动：同地区内手动指定具体节点（select，不测速）
   #   -自动：同地区内自动择优（url-test），仅作同地区兜底
@@ -273,11 +268,12 @@ proxy-groups:
     exclude-filter: *filter-chain-or-known-regions
 
   # 链式代理：
-  # - 🔗 链式前置：第一跳。include-all-proxies 只纳入订阅本体节点，
+  # - 🔗 链式前置：第一跳。include-all-proxies 只纳入最终配置中的订阅本体节点，
   #   不会纳入 chainpool 复制出的链式节点，因此不会自我嵌套。
   #   候选里只放地区组（地区组已排除「🔗 」节点），不放 🚀 节点选择 / 🐟 漏网之鱼，
   #   否则会出现 落地 -> 前置 -> 节点选择 -> 落地 的环路。
-  # - 🔗 链式落地：第二跳。组内是 chainpool 复制出的全部「🔗 」节点。
+  # - 🔗 链式落地：第二跳。组内是 HTTP provider 复制出的全部「🔗 」节点，
+  #   它们统一经 🔗 链式前置 出站。
 
 rule-providers:
   AI:
