@@ -2,11 +2,23 @@
 # 说明：
 # - 这是一份供 Mihomo / 订阅转换后端使用的 YAML 模板，不直接内置节点。
 # - 转换后端负责注入订阅节点；本文件只表达当前 ShellCrash 的路由需求、DNS 行为与策略组结构。
-# - 基于本机当前生效需求整理：AI 优先美区、Telegram 优先新加坡、其余流量统一经「🐟 漏网之鱼」走代理。
-# - 已移除中国大陆直连分流：不再有 🎯 国内流量 组，也不再加载 China / ChinaIP 规则集与 GEOIP,CN。
-#   仅保留私网、回环与 IPv6 本地链路的强制直连，用于保护宿主机、Docker bridge 与 LAN 可达性。
+# - 路由需求：AI 优先美区、Telegram 优先新加坡、中国大陆直连、其余流量经「🐟 漏网之鱼」走代理。
+# - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
+#   mixed-port 或另行按需增加，本模板不再提供端口级出口。
 # - 地区组采用“手动指定节点优先，失效后自动 fallback 到同地区可连通节点”的结构。
-# - 显式将 nvidia.com 纳入 AI 分组，避免依赖外部规则集是否覆盖。
+# - 链式代理：通过 proxy-providers 把订阅节点复制一份并附加 dialer-proxy，得到「🔗 」前缀的
+#   链式落地节点；前置节点在「🔗 链式前置」中手动选择。详见文件末尾的链式代理说明。
+
+x-filter-hk: &filter-hk "(?i)港|hk|hong ?kong|🇭🇰"
+x-filter-jp: &filter-jp "(?i)日|jp|japan|tokyo|🇯🇵"
+x-filter-sg: &filter-sg "(?i)新|sg|singapore|🇸🇬"
+x-filter-us: &filter-us "(?i)美|us|usa|america|united states|🇺🇸"
+x-filter-known-regions: &filter-known-regions "(?i)港|hk|hong ?kong|🇭🇰|日|jp|japan|tokyo|🇯🇵|新|sg|singapore|🇸🇬|美|us|usa|america|united states|🇺🇸"
+
+# 链式节点标记：所有由 proxy-providers 复制出来的链式节点都带「🔗 」前缀。
+# 常规地区组必须把它们排除，否则 include-all 会把链式落地节点吸进前置候选，形成 dialer 环路。
+x-filter-chain: &filter-chain "🔗"
+x-filter-chain-or-known-regions: &filter-chain-or-known-regions "(?i)🔗|港|hk|hong ?kong|🇭🇰|日|jp|japan|tokyo|🇯🇵|新|sg|singapore|🇸🇬|美|us|usa|america|united states|🇺🇸"
 
 x-region-auto: &region-auto
   type: url-test
@@ -14,21 +26,17 @@ x-region-auto: &region-auto
   interval: 300
   tolerance: 50
   include-all: true
+  exclude-filter: *filter-chain
 
 x-region-manual: &region-manual
   type: select
   include-all: true
+  exclude-filter: *filter-chain
 
 x-region-fallback: &region-fallback
   type: fallback
   url: http://www.gstatic.com/generate_204
   interval: 300
-
-x-filter-hk: &filter-hk "(?i)港|hk|hong ?kong|🇭🇰"
-x-filter-jp: &filter-jp "(?i)日|jp|japan|tokyo|🇯🇵"
-x-filter-sg: &filter-sg "(?i)新|sg|singapore|🇸🇬"
-x-filter-us: &filter-us "(?i)美|us|usa|america|united states|🇺🇸"
-x-filter-known-regions: &filter-known-regions "(?i)港|hk|hong ?kong|🇭🇰|日|jp|japan|tokyo|🇯🇵|新|sg|singapore|🇸🇬|美|us|usa|america|united states|🇺🇸"
 
 x-rule-set-domain: &rule-set-domain
   type: http
@@ -49,65 +57,6 @@ ipv6: false
 log-level: info
 external-controller: ":9090"
 
-# 独立出口 listeners：9 个 listener 分别指向独立的纯手动选择组。
-# 供任意需要固定出口的客户端使用（New-API 渠道级 proxy、CLI 工具、脚本等），不限于某一个应用。
-# 每个组通过 include-all 纳入当前订阅的全部节点；不测速、不自动切换。
-# 仅绑定 Docker bridge 网关，避免成为 LAN 开放代理。
-listeners:
-  - name: egress-1
-    type: mixed
-    port: 17891
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 1
-
-  - name: egress-2
-    type: mixed
-    port: 17892
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 2
-
-  - name: egress-3
-    type: mixed
-    port: 17893
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 3
-
-  - name: egress-4
-    type: mixed
-    port: 17894
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 4
-
-  - name: egress-5
-    type: mixed
-    port: 17895
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 5
-
-  - name: egress-6
-    type: mixed
-    port: 17896
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 6
-
-  - name: egress-7
-    type: mixed
-    port: 17897
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 7
-
-  - name: egress-8
-    type: mixed
-    port: 17898
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 8
-
-  - name: egress-9
-    type: mixed
-    port: 17899
-    listen: 172.17.0.1
-    proxy: 🎛️ 出口 9
-
 profile:
   store-selected: true
 
@@ -116,6 +65,7 @@ profile:
 # - 监听 0.0.0.0:1053 供局域网/宿主机使用
 # - 仅对局域网/本地域名做 fake-ip 排除
 # - 上游继续使用阿里/腾讯 DoH
+# - 国内域名走国内 DoH（依赖下方 rule-providers 中的 cn，名称必须保持为 cn）
 dns:
   enable: true
   listen: 0.0.0.0:1053
@@ -128,10 +78,33 @@ dns:
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
+  nameserver-policy:
+    "rule-set:cn":
+      - https://dns.alidns.com/dns-query
+      - https://doh.pub/dns-query
   fake-ip-filter:
     - "*.lan"
     - "*.local"
     - "*.localhost"
+
+# 链式代理节点池：把本机已生成的订阅配置当作节点来源再读一次，
+# 复制出一份带 dialer-proxy 的链式副本。
+# - type: file + 相对路径，路径基准是 mihomo 的 -d 目录（ShellCrash 为 /etc/ShellCrash），
+#   mihomo 会拒绝 home 目录以外的绝对路径，因此这里必须用相对路径。
+# - 只读取该文件的 proxies 段，不会写回，也不需要把订阅地址写进本模板。
+# - additional-prefix 给副本加「🔗 」前缀，dialer-proxy 指向前置组，实现两跳。
+# - health-check 默认关闭：开启会让每个链式节点都经前置节点额外测速一遍。
+proxy-providers:
+  chainpool:
+    type: file
+    path: ./yamls/config.yaml
+    health-check:
+      enable: false
+      url: http://www.gstatic.com/generate_204
+      interval: 300
+    override:
+      additional-prefix: "🔗 "
+      dialer-proxy: 🔗 链式前置
 
 proxy-groups:
   - name: 🚀 节点选择
@@ -142,6 +115,7 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇺🇸 美国
       - 其余地区
+      - 🔗 链式落地
 
   - name: 🤖 AI 服务
     type: select
@@ -151,6 +125,7 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇭🇰 香港
       - 其余地区
+      - 🔗 链式落地
       - 🚀 节点选择
 
   - name: 📲 Telegram
@@ -163,6 +138,18 @@ proxy-groups:
       - 其余地区
       - 🚀 节点选择
 
+  # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
+  - name: 🎯 国内流量
+    type: select
+    proxies:
+      - DIRECT
+      - 🚀 节点选择
+      - 🇭🇰 香港
+      - 🇯🇵 日本
+      - 🇸🇬 新加坡
+      - 🇺🇸 美国
+      - 其余地区
+
   # 漏网之鱼：所有未被上面规则命中的流量。默认跟随 🚀 节点选择，
   # 保留 DIRECT 作为末位手动开关，便于临时排障，但不作为默认出口。
   - name: 🐟 漏网之鱼
@@ -174,6 +161,7 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇺🇸 美国
       - 其余地区
+      - 🔗 链式落地
       - DIRECT
 
   # 地区主组：先走“手动指定节点”，失败后回退到“同地区自动组”
@@ -226,7 +214,7 @@ proxy-groups:
 
   - name: 其余地区-手动
     <<: *region-manual
-    exclude-filter: *filter-known-regions
+    exclude-filter: *filter-chain-or-known-regions
 
   # 自动组：仅作为同地区兜底，不参与跨地区回退
   - name: 🇭🇰 香港-自动
@@ -247,36 +235,28 @@ proxy-groups:
 
   - name: 其余地区-自动
     <<: *region-auto
-    exclude-filter: *filter-known-regions
+    exclude-filter: *filter-chain-or-known-regions
 
-  # listener 专用出口：纯手动 selector，订阅更新后自动纳入全部节点。
-  # 刻意放在 proxy-groups 末尾，使其在面板中排在常规分组之后。
-  - name: 🎛️ 出口 1
-    <<: *region-manual
+  # 链式代理：
+  # - 🔗 链式前置：第一跳。include-all-proxies 只纳入订阅本体节点，
+  #   不会纳入 chainpool 复制出的链式节点，因此不会自我嵌套。
+  #   候选里只放地区组（地区组已排除「🔗 」节点），不放 🚀 节点选择 / 🐟 漏网之鱼，
+  #   否则会出现 落地 -> 前置 -> 节点选择 -> 落地 的环路。
+  # - 🔗 链式落地：第二跳。组内是 chainpool 复制出的全部「🔗 」节点。
+  - name: 🔗 链式前置
+    type: select
+    include-all-proxies: true
+    proxies:
+      - 🇭🇰 香港
+      - 🇯🇵 日本
+      - 🇸🇬 新加坡
+      - 🇺🇸 美国
+      - 其余地区
 
-  - name: 🎛️ 出口 2
-    <<: *region-manual
-
-  - name: 🎛️ 出口 3
-    <<: *region-manual
-
-  - name: 🎛️ 出口 4
-    <<: *region-manual
-
-  - name: 🎛️ 出口 5
-    <<: *region-manual
-
-  - name: 🎛️ 出口 6
-    <<: *region-manual
-
-  - name: 🎛️ 出口 7
-    <<: *region-manual
-
-  - name: 🎛️ 出口 8
-    <<: *region-manual
-
-  - name: 🎛️ 出口 9
-    <<: *region-manual
+  - name: 🔗 链式落地
+    type: select
+    use:
+      - chainpool
 
 rule-providers:
   AI:
@@ -288,6 +268,13 @@ rule-providers:
   TelegramIP:
     <<: *rule-set-ipcidr
     url: https://github.com/666OS/rules/raw/release/mihomo/ip/Telegram.mrs
+  # 名称必须是 cn：dns.nameserver-policy 里以 rule-set:cn 引用它
+  cn:
+    <<: *rule-set-domain
+    url: https://github.com/666OS/rules/raw/release/mihomo/domain/China.mrs
+  cnip:
+    <<: *rule-set-ipcidr
+    url: https://github.com/666OS/rules/raw/release/mihomo/ip/China.mrs
 
 rules:
   # 本地/私网直连：保护宿主机、Docker、CGNAT 与 IPv6 本地链路
@@ -304,12 +291,18 @@ rules:
   # 显式补充 AI 域名，避免外部 AI 规则集未覆盖时走错组
   - DOMAIN-SUFFIX,nvidia.com,🤖 AI 服务
 
-  # AI 走独立策略组
+  # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
   - RULE-SET,AI,🤖 AI 服务
 
   # Telegram 优先新加坡
   - RULE-SET,Telegram,📲 Telegram
   - RULE-SET,TelegramIP,📲 Telegram,no-resolve
 
-  # 漏网之鱼：其余全部流量（含中国大陆）统一走代理
+  # 中国大陆直连：域名走 cn 规则集，裸 IP 走 cnip 规则集。
+  # cnip 带 no-resolve，避免在 fake-ip 模式下为 IP 规则强制触发 DNS 解析。
+  # 不使用 GEOIP,CN：ChinaIP 规则集已覆盖，且可避免依赖 geoip 数据库下载。
+  - RULE-SET,cn,🎯 国内流量
+  - RULE-SET,cnip,🎯 国内流量,no-resolve
+
+  # 漏网之鱼：其余全部流量统一走代理
   - MATCH,🐟 漏网之鱼
