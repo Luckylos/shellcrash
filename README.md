@@ -68,16 +68,16 @@ AI 规则刻意排在国内规则之前，避免国内域名规则集误收 AI �
 Mihomo 已弃用 `relay` 策略组，链式能力由 `dialer-proxy` 提供；`dialer-proxy` 不能写在
 `proxy-groups` 上，只能写在具体节点或 `proxy-providers.override` 上。
 
-### 当前方案：HTTP provider + `request.url`
+### 当前方案：HTTP provider + 固定真实 URL
 
-本模板不内置具体节点，也不依赖 ShellCrash 专用目录。Subconverter 渲染模板时，
-`request.url` 取当前请求的订阅源，并写入 HTTP provider：
+本模板不内置具体节点，也不依赖 ShellCrash 专用目录。HTTP provider 直接读取私有 MiSub
+profile 地址，再通过 `override.dialer-proxy` 给落地节点批量附加前置组：
 
 ```yaml
 proxy-providers:
   chainpool:
     type: http
-    url: "{{ request.url }}"
+    url: "https://misub.543822.xyz/luckyss"
     path: ./providers/chainpool.yaml
     override:
       additional-prefix: "🔗 "
@@ -95,9 +95,9 @@ provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真
 使用前必须满足：
 
 - 只能传入**单个**订阅 URL；当前模板不负责把多个 URL 自动拆分后再提供给 Mihomo。
-- 必须使用支持 SubConverter 外部配置的转换链路，并将 `clash_rule_base` 配置为本仓库的 `shellcrash.yaml`。直接把仓库里的原始 YAML 模板交给 Mihomo，`{{ request.url }}` 不会自动求值。
-- `request.url` 只会在兼容 SubConverter 模板语法的转换后端渲染。
-- provider 源应返回包含顶层 `proxies:` 的 Mihomo/Clash YAML；Mihomo 也可在部分版本中回落解析 URI/base64 订阅，但使用 YAML provider 源更容易跨客户端验证。
+- 必须使用支持 SubConverter 外部配置的转换链路，并将 `clash_rule_base` 配置为本仓库的 `shellcrash.yaml`。
+- `chainpool.url` 是固定的私有 MiSub profile 地址，必须返回包含顶层 `proxies:` 的 Mihomo/Clash YAML；不要公开分享生成配置或 provider 地址。
+- 不依赖任何非 Mihomo 配置变量；直接把仓库里的 YAML 当作最终配置时，provider 仍会使用其中的固定地址。
 - `exclude-type` 使用 Mihomo provider 的官方字段，排除不适合经 TCP 前置中转的 UDP 类节点。
 - 生成配置会包含订阅源地址，这是运行时拉取 provider 所必需的；不要公开分享生成配置或把真实订阅地址提交到仓库。
 - `path` 使用相对路径，基准是 Mihomo 的 `-d` 目录；`./providers/chainpool.yaml` 可用于普通客户端，避免绑定 `/etc/ShellCrash/yamls/` 等宿主机布局。
@@ -105,7 +105,7 @@ provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真
 ### MiSub / SubConverter 使用方式
 
 这是单一 YAML 模板，不需要额外维护节点或链式配置文件。使用 MiSub 时，后端的
-`subConfig`/外部配置必须把 `clash_rule_base` 指向：
+`subConfig`/外部配置仍应把 `clash_rule_base` 指向：
 
 ```text
 https://raw.githubusercontent.com/Luckylos/shellcrashyaml/main/shellcrash.yaml
@@ -114,13 +114,12 @@ https://raw.githubusercontent.com/Luckylos/shellcrashyaml/main/shellcrash.yaml
 最终链路应为：
 
 ```text
-MiSub → SubConverter `/sub?target=clash&url=...&config=...`
-      → clash_rule_base: shellcrash.yaml
-      → 渲染 request.url
+MiSub → SubConverter（clash_rule_base: shellcrash.yaml）
       → 生成最终 Mihomo YAML
+      → Mihomo HTTP provider 读取固定的私有 MiSub profile
 ```
 
-这个仓库不包含真实订阅地址、节点认证或 token。
+当前仓库为私有仓库；不要公开真实订阅地址、节点认证或 token。
 
 ### 动态节点级链式，而不是静态节点清单
 
