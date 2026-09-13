@@ -105,11 +105,9 @@ provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真
 ### MiSub / SubConverter 使用方式
 
 这是单一 YAML 模板，不需要额外维护节点或链式配置文件。使用 MiSub 时，后端的
-`subConfig`/外部配置仍应把 `clash_rule_base` 指向：
-
-```text
-https://raw.githubusercontent.com/Luckylos/shellcrashyaml/main/shellcrash.yaml
-```
+`subConfig`/外部配置仍应把 `clash_rule_base` 指向一个**后端可访问**的本模板地址。
+私有 GitHub 仓库的 raw 地址不能默认被公共 SubConverter 读取；如果后端没有访问凭据，
+需要将模板部署到后端可访问的位置。
 
 最终链路应为：
 
