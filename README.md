@@ -85,7 +85,7 @@ proxy-providers:
 ```
 
 provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真实节点，并给每个副本加上
-`🔗 ` 前缀和节点级 `dialer-proxy: 🔗 链式前置`；模板不写死任何入口或出口节点参数。
+`🔗` 前缀和节点级 `dialer-proxy: 🔗 链式前置`；模板不写死任何入口或出口节点参数。
 因此每次订阅内容变化后，链式入口池和链式落地池都随真实节点变化：
 
 ```text
@@ -96,6 +96,7 @@ provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真
 
 - 只能传入**单个**订阅 URL；当前模板不负责把多个 URL 自动拆分后再提供给 Mihomo。
 - 该 URL 必须返回 Mihomo/Clash YAML，并包含 `proxies:`；纯 URI 列表不适用这个 provider。
+- `exclude-type` 使用 Mihomo provider 的官方字段，排除不适合经 TCP 前置中转的 UDP 类节点。
 - `request.url` 只会在兼容 Subconverter 模板语法的转换后端渲染。直接把仓库里的原始模板交给 Mihomo，`{{ request.url }}` 不会自动求值。
 - 生成配置会包含订阅源地址，这是运行时拉取 provider 所必需的；不要公开分享生成配置或把真实订阅地址提交到仓库。
 - `path` 使用相对路径，基准是 Mihomo 的 `-d` 目录；`./providers/chainpool.yaml` 可用于普通客户端，避免绑定 `/etc/ShellCrash/yamls/` 等宿主机布局。
@@ -129,8 +130,10 @@ provider 复制出的节点。
 
 ### 防环约束
 
-- `🔗 链式前置` 使用 `include-all-proxies: true`，动态纳入当前订阅本体节点，不写死
-  `proxies` 节点清单，也不吸收 `chainpool` 复制出的 `🔗 ` 节点。
+- `🔗 链式前置` 使用官方策略组字段 `include-all-proxies` 与 `exclude-filter: "🔗"`，动态纳入
+  当前订阅本体节点，不写死 `proxies` 节点清单，也不吸收 `chainpool` 复制出的链式节点。
+- `🔗 链式落地` 使用官方策略组字段 `empty-fallback: REJECT`，provider 尚未加载时不回退到
+  `COMPATIBLE`/直连。
 - 所有使用 `include-all: true` 的地区组都带 `exclude-filter: "🔗"`，避免链式副本进入普通地区候选。
 - 链式前置不引用 `🚀 节点选择`、`🐟 漏网之鱼` 或 `🔗 链式落地`，避免
   `落地 → 前置 → 节点选择 → 落地` 环路。
@@ -166,8 +169,8 @@ provider 复制出的节点。
 使用去除旧链式副本的 38 个临时夹具节点做最终配置验证；节点字段只用于隔离测试，未写回仓库：
 
 - 生成配置执行 `CrashCore -t -d /home -f /home/config.yaml` 成功。
-- HTTP provider 运行态：`vehicleType=HTTP`、`chainpool` 加载 38 个节点，38 个均带 `🔗 ` 前缀，38 个均保留 `dialer-proxy: 🔗 链式前置`。
-- 防环：`🔗 链式前置` 的候选由同一份运行态 `/proxies` 动态读回，`🔗 ` 链式节点数必须为 0；`🔗 链式落地` 的成员必须全部来自当前 `chainpool`，带前缀并保留 `dialer-proxy: 🔗 链式前置`。
+- HTTP provider 运行态：`vehicleType=HTTP`、`chainpool` 加载 38 个节点，38 个均带 `🔗` 前缀，38 个均保留 `dialer-proxy: 🔗 链式前置`。
+- 防环：`🔗 链式前置` 的候选由同一份运行态 `/proxies` 动态读回，`🔗` 链式节点数必须为 0；`🔗 链式落地` 的成员必须全部来自当前 `chainpool`，带前缀并保留 `dialer-proxy: 🔗 链式前置`。
 - 规则 provider 运行态全部加载：`cn` 111035 条、`cnip` 9624 条、`AI` 273 条、`Telegram` 36 条、`TelegramIP` 24 条；`/rules` 共 16 条，AI/Telegram 位于 cn/cnip 之前。
 - 实际分流：通过隔离核心访问 `http://www.baidu.com/` 返回 `HTTP 200`，日志出现 1 次 `RuleSet(cn)` 命中 `🎯 国内流量`；运行态 `🎯 国内流量.now` 为 `DIRECT`。
 - 两跳功能差分：正常前置 + 链式落地 `HTTP 204`；将 `🐟 漏网之鱼` 切为 `DIRECT` 的对照 `HTTP 204`；前置切换到死节点后链式 `HTTP 502`；恢复前置后链式 `HTTP 204`。
@@ -187,5 +190,5 @@ provider 复制出的节点。
 
 ## 参考
 
-- https://raw.githubusercontent.com/666OS/YYDS/refs/heads/main/mihomo/config/cn/Pro_cn.yaml
-- https://wiki.metacubex.one/config/proxies/dialer-proxy/
+- <https://raw.githubusercontent.com/666OS/YYDS/refs/heads/main/mihomo/config/cn/Pro_cn.yaml>
+- <https://wiki.metacubex.one/config/proxies/dialer-proxy/>

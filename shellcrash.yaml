@@ -102,13 +102,14 @@ proxy-providers:
     url: "{{ request.url }}"
     path: ./providers/chainpool.yaml
     interval: 86400
+    exclude-type: "hysteria|hysteria2|tuic|wireguard"
     health-check:
       enable: false
       url: http://www.gstatic.com/generate_204
       interval: 300
     override:
       additional-prefix: "🔗 "
-      dialer-proxy: 🔗 链式前置
+      dialer-proxy: "🔗 链式前置"
 
 proxy-groups:
   # ── 一、入口策略组：规则命中后的落点，日常主要在这里切换 ──
@@ -180,11 +181,13 @@ proxy-groups:
   - name: 🔗 链式前置
     type: select
     include-all-proxies: true
+    exclude-filter: *filter-chain
 
   - name: 🔗 链式落地
     type: select
     use:
       - chainpool
+    empty-fallback: REJECT
 
   # ── 三、地区主组：入口策略组的实际落点。先用「手动」，失效自动回退「自动」 ──
 
