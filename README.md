@@ -1,6 +1,6 @@
 # shellcrashyaml
 
-基于当前 ShellCrash 实际需求整理的一份 **Mihomo / 订阅转换后端模板 YAML**。
+基于当前 ShellCrash 实际需求整理的一份 **可直接加载的 Mihomo YAML 配置**，也可由订阅转换后端原样分发。
 
 ## 文件
 
@@ -8,7 +8,7 @@
 
 ## 设计目标
 
-- 适配 **订阅转换后端** 使用，不直接内置具体节点
+- 可直接作为 Mihomo 配置使用，不直接静态内置节点
 - 保留当前 ShellCrash 的核心路由需求
 - 风格参考 `666OS/YYDS` 的 `Pro_cn.yaml`
 - 地区节点支持“手动指定优先，失效后同地区自动回退”
@@ -27,7 +27,7 @@
 - 私网/回环/IPv6 本地链路：强制直连
 - DNS：`fake-ip + 0.0.0.0:1053 + 阿里/腾讯 DoH`，国内域名按 `rule-set:cn` 走国内 DoH
 
-结构规模：22 个 `proxy-group`、1 个 `proxy-provider`、5 个 `rule-provider`、16 条 rules、0 个 listener。
+结构规模：22 个 `proxy-group`、2 个 `proxy-provider`、5 个 `rule-provider`、16 条 rules、0 个 listener。
 
 ## 策略组顺序
 
@@ -68,91 +68,78 @@ AI 规则刻意排在国内规则之前，避免国内域名规则集误收 AI �
 Mihomo 已弃用 `relay` 策略组，链式能力由 `dialer-proxy` 提供；`dialer-proxy` 不能写在
 `proxy-groups` 上，只能写在具体节点或 `proxy-providers.override` 上。
 
-### 当前方案：HTTP provider + 固定真实 URL
+### 当前方案：自包含双 HTTP provider
 
-本模板不内置具体节点，也不依赖 ShellCrash 专用目录。HTTP provider 直接读取私有 MiSub
-profile 地址，再通过 `override.dialer-proxy` 给落地节点批量附加前置组：
+本模板只依赖 Mihomo 官方机制，不依赖 SubConverter 注入顶层节点，也不使用任何模板变量。
+两个 HTTP provider 读取同一个固定的私有 MiSub profile；前置副本使用 `🛰️ 前置` 前缀，
+落地副本使用 `🔗` 前缀：
 
 ```yaml
 proxy-providers:
+  frontpool:
+    type: http
+    url: "<固定 MiSub profile 地址>"
+    path: ./providers/frontpool.yaml
+    override:
+      additional-prefix: "🛰️ 前置 "
+
   chainpool:
     type: http
-    url: "https://misub.543822.xyz/luckyss"
+    url: "<固定 MiSub profile 地址>"
     path: ./providers/chainpool.yaml
     override:
       additional-prefix: "🔗 "
-      dialer-proxy: 🔗 链式前置
+      dialer-proxy: "🔗 链式前置"
 ```
 
-provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真实节点，并给每个副本加上
-`🔗` 前缀和节点级 `dialer-proxy: 🔗 链式前置`；模板不写死任何入口或出口节点参数。
-因此每次订阅内容变化后，链式入口池和链式落地池都随真实节点变化：
+对应链路：
 
 ```text
-客户端 → 当前订阅中的入口节点 → 当前订阅复制出的出口节点 → 目标
+固定 MiSub profile
+       ├── frontpool  → 🔗 链式前置，可动态选择第一跳
+       └── chainpool  → 🔗 链式落地，节点通过 dialer-proxy 使用第一跳
 ```
+
+`frontpool` 和 `chainpool` 都读取源配置的顶层 `proxies:`，因此每次订阅节点变化后，
+前置池和落地池都会同步变化。落地节点由 provider 的 `override.dialer-proxy` 动态附加，
+不是静态复制脚本，也不是 `relay`。
 
 使用前必须满足：
 
-- 只能传入**单个**订阅 URL；当前模板不负责把多个 URL 自动拆分后再提供给 Mihomo。
-- 必须使用支持 SubConverter 外部配置的转换链路，并将 `clash_rule_base` 配置为本仓库的 `shellcrash.yaml`。
-- `chainpool.url` 是固定的私有 MiSub profile 地址，必须返回包含顶层 `proxies:` 的 Mihomo/Clash YAML；不要公开分享生成配置或 provider 地址。
-- 不依赖任何非 Mihomo 配置变量；直接把仓库里的 YAML 当作最终配置时，provider 仍会使用其中的固定地址。
+- 固定 profile 地址必须返回包含顶层 `proxies:` 的 Mihomo/Clash YAML；当前地址使用 Clash 输出参数，避免拿到 base64 URI 列表。
+- 本模板不依赖 `request.url`、`clash_rule_base` 注入或其他非 Mihomo 模板变量；可以直接作为
+  Mihomo 配置加载。若通过 SubConverter 分发，后端必须返回这份完整 YAML，而不是另一份旧模板。
+- `frontpool` 和 `chainpool` 使用不同的相对缓存路径，避免两个 provider 互相覆盖缓存。
 - `exclude-type` 使用 Mihomo provider 的官方字段，排除不适合经 TCP 前置中转的 UDP 类节点。
-- 生成配置会包含订阅源地址，这是运行时拉取 provider 所必需的；不要公开分享生成配置或把真实订阅地址提交到仓库。
-- `path` 使用相对路径，基准是 Mihomo 的 `-d` 目录；`./providers/chainpool.yaml` 可用于普通客户端，避免绑定 `/etc/ShellCrash/yamls/` 等宿主机布局。
-
-### MiSub / SubConverter 使用方式
-
-这是单一 YAML 模板，不需要额外维护节点或链式配置文件。使用 MiSub 时，后端的
-`subConfig`/外部配置仍应把 `clash_rule_base` 指向一个**后端可访问**的本模板地址。
-私有 GitHub 仓库的 raw 地址不能默认被公共 SubConverter 读取；如果后端没有访问凭据，
-需要将模板部署到后端可访问的位置。
-
-最终链路应为：
-
-```text
-MiSub → SubConverter（clash_rule_base: shellcrash.yaml）
-      → 生成最终 Mihomo YAML
-      → Mihomo HTTP provider 读取固定的私有 MiSub profile
-```
-
-当前仓库为私有仓库；不要公开真实订阅地址、节点认证或 token。
+- `path` 的基准是 Mihomo 的 `-d` 目录；客户端必须能够创建 `./providers/` 目录并支持 HTTP provider。
+- 当前仓库为私有仓库；不要公开固定 profile 地址、生成配置、节点认证或 token。
 
 ### 动态节点级链式，而不是静态节点清单
 
-用户示例中的核心字段是出口节点上的：
-
-```yaml
-- name: "🔗 当前订阅中的出口节点"
-  # 当前订阅节点的真实参数由 provider 动态提供
-  dialer-proxy: "🔗 链式前置"
-```
-
-本模板通过 HTTP `proxy-provider` 的 `override` 动态注入这个字段：
+落地 provider 的核心字段仍然是官方的节点级配置：
 
 ```yaml
 override:
   additional-prefix: "🔗 "
-  dialer-proxy: 🔗 链式前置
+  dialer-proxy: "🔗 链式前置"
 ```
 
-因此不会把入口节点、出口节点、服务器、端口或认证参数静态写进模板。`🔗 链式前置`
-使用 `include-all-proxies: true` 动态吸收当前订阅的原始节点；`🔗 链式落地` 动态使用
-provider 复制出的节点。
+`frontpool` 不设置 `dialer-proxy`，只给前置副本增加 `🛰️ 前置` 前缀；`chainpool` 给落地副本
+增加 `🔗` 前缀并统一指向 `🔗 链式前置`。因此模板不写死服务器、端口、协议或认证参数。
+
+普通地区组通过 `use: [frontpool]` 读取动态前置 provider，链式前置组也只读取 `frontpool`；
+链式落地组只读取 `chainpool`。这样即使配置中没有顶层 `proxies:`，也能形成完整的两跳链路。
 
 客户端若只显示顶层 `proxies`、不支持 provider 节点，或面板错误地只请求
-`/proxies/<provider-node>` 而不读取 `/providers/proxies`，则可能看到「链式落地为空」。
-这是客户端/provider 命名空间兼容性边界，不是把节点静态化或改成 `type: file` 就能解决的问题；
-此时需要使用客户端支持 provider UI，或由上游另行生成顶层链式节点。
+`/proxies/<provider-node>` 而不读取 `/providers/proxies`，仍可能看到 provider 节点为空。
+这是客户端/provider 命名空间兼容性边界；需要使用支持 `proxy-providers` 的 Mihomo 客户端。
 
 ### 防环约束
 
-- `🔗 链式前置` 使用官方策略组字段 `include-all-proxies` 与 `exclude-filter: "🔗"`，动态纳入
-  当前订阅本体节点，不写死 `proxies` 节点清单，也不吸收 `chainpool` 复制出的链式节点。
-- `🔗 链式落地` 使用官方策略组字段 `empty-fallback: REJECT`，provider 尚未加载时不回退到
-  `COMPATIBLE`/直连。
-- 所有使用 `include-all: true` 的地区组都带 `exclude-filter: "🔗"`，避免链式副本进入普通地区候选。
+- `🔗 链式前置` 只使用 `frontpool`，不读取 `chainpool`，因此落地副本不会成为第一跳候选。
+- `🔗 链式落地` 只使用 `chainpool`，并通过 `empty-fallback: REJECT` 防止 provider 尚未加载时回退到
+  `COMPATIBLE` 或直连。
+- 普通地区组也只使用 `frontpool`，不会把带 `🔗` 前缀的落地节点吸入地区候选。
 - 链式前置不引用 `🚀 节点选择`、`🐟 漏网之鱼` 或 `🔗 链式落地`，避免
   `落地 → 前置 → 节点选择 → 落地` 环路。
 - `health-check` 默认关闭：开启会让每个链式节点都经前置节点额外测速一遍。
@@ -182,17 +169,21 @@ provider 复制出的节点。
 
 ## 验证
 
-验证核心为生产同版本 **Mihomo Meta v1.19.29**（从生产容器读取二进制，仅在隔离容器执行）。原始模板通过 YAML/引用探针：22 个 `proxy-group`、5 个 `rule-provider`、无 `listeners`、无顶层 `proxies`、无重复组名，`cn` 与 DNS 的 `rule-set:cn` 引用一致。
+当前版本已完成静态和源地址验证：
 
-使用去除旧链式副本的 38 个临时夹具节点做最终配置验证；节点字段只用于隔离测试，未写回仓库：
+- YAML 可解析；包含 22 个 `proxy-group`、5 个 `rule-provider`、无 `listeners`、无顶层 `proxies`、无重复组名。
+- `frontpool` 与 `chainpool` 均为官方 `type: http` provider，使用固定真实 URL 和不同缓存路径。
+- 两个 provider 源地址都解析为具体 HTTP URL；源响应为合法 YAML，并包含 34 个顶层 `proxies`。
+- `🔗 链式前置` 仅使用 `frontpool`；`🔗 链式落地` 仅使用 `chainpool`，后者保留 `dialer-proxy: 🔗 链式前置`。
+- 当前环境没有可用于本版本最终运行态测试的 Mihomo/CrashCore 可执行文件，因此尚未宣称真实两跳连通性已经验证。
 
-- 生成配置执行 `CrashCore -t -d /home -f /home/config.yaml` 成功。
-- HTTP provider 运行态：`vehicleType=HTTP`、`chainpool` 加载 38 个节点，38 个均带 `🔗` 前缀，38 个均保留 `dialer-proxy: 🔗 链式前置`。
-- 防环：`🔗 链式前置` 的候选由同一份运行态 `/proxies` 动态读回，`🔗` 链式节点数必须为 0；`🔗 链式落地` 的成员必须全部来自当前 `chainpool`，带前缀并保留 `dialer-proxy: 🔗 链式前置`。
-- 规则 provider 运行态全部加载：`cn` 111035 条、`cnip` 9624 条、`AI` 273 条、`Telegram` 36 条、`TelegramIP` 24 条；`/rules` 共 16 条，AI/Telegram 位于 cn/cnip 之前。
-- 实际分流：通过隔离核心访问 `http://www.baidu.com/` 返回 `HTTP 200`，日志出现 1 次 `RuleSet(cn)` 命中 `🎯 国内流量`；运行态 `🎯 国内流量.now` 为 `DIRECT`。
-- 两跳功能差分：正常前置 + 链式落地 `HTTP 204`；将 `🐟 漏网之鱼` 切为 `DIRECT` 的对照 `HTTP 204`；前置切换到死节点后链式 `HTTP 502`；恢复前置后链式 `HTTP 204`。
-- provider 可见性边界：链式节点在 `/providers/proxies` 中可读，但 Mihomo 1.19.29 的单节点 `/proxies/<provider-node>` 返回 `404`。客户端必须支持 provider 命名空间；只按顶层 `/proxies` 渲染的面板会显示为空，需要上游生成顶层克隆节点。
+运行态验收应检查：
+
+1. `frontpool` 和 `chainpool` 两个 provider 都成功加载；
+2. `🔗 链式前置` 出现带 `🛰️ 前置` 前缀的动态节点；
+3. `🔗 链式落地` 出现带 `🔗` 前缀的动态节点；
+4. `/providers/proxies/chainpool` 中的节点包含 `dialer-proxy: 🔗 链式前置`；
+5. 切换前置节点后，链式落地流量随之切换或失败。
 
 ## 说明
 
@@ -204,7 +195,7 @@ provider 复制出的节点。
 4. DNS 行为
 5. 链式代理结构
 
-具体节点应由订阅转换后端注入，或由上游订阅提供。
+具体节点由 `frontpool` 和 `chainpool` 在运行时从固定 MiSub profile 读取；模板本身不静态保存节点参数。
 
 ## 参考
 
