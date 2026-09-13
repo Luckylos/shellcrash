@@ -171,23 +171,15 @@ proxy-groups:
       - 🔗 链式落地
       - DIRECT
 
-  # ── 二、链式代理：两跳出口，需要时在这两个组里各选一次 ──
-  # - 🔗 链式前置：第一跳。include-all-proxies 只纳入订阅本体节点，
-  #   不会纳入 chainpool 复制出的链式节点，因此不会自我嵌套。
-  #   候选里只放地区组（地区组已排除「🔗 」节点），不放 🚀 节点选择 / 🐟 漏网之鱼，
-  #   否则会出现 落地 -> 前置 -> 节点选择 -> 落地 的环路。
-  # - 🔗 链式落地：第二跳。组内是 chainpool 复制出的全部「🔗 」节点，
-  #   它们统一经 🔗 链式前置 出站。
+  # ── 二、链式代理：出口节点的 dialer-proxy 动态指向第一跳 ──
+  # - 🔗 链式前置：第一跳。include-all-proxies 会从当前订阅动态吸收原始节点，
+  #   不写死任何节点名，也不会吸收 chainpool 复制出的「🔗 」节点。
+  # - 🔗 链式落地：第二跳。chainpool 从当前订阅动态复制节点并注入
+  #   dialer-proxy: 🔗 链式前置；复制出的节点统一带「🔗 」前缀。
 
   - name: 🔗 链式前置
     type: select
     include-all-proxies: true
-    proxies:
-      - 🇭🇰 香港
-      - 🇯🇵 日本
-      - 🇸🇬 新加坡
-      - 🇺🇸 美国
-      - 其余地区
 
   - name: 🔗 链式落地
     type: select
@@ -268,12 +260,10 @@ proxy-groups:
     exclude-filter: *filter-chain-or-known-regions
 
   # 链式代理：
-  # - 🔗 链式前置：第一跳。include-all-proxies 只纳入最终配置中的订阅本体节点，
-  #   不会纳入 chainpool 复制出的链式节点，因此不会自我嵌套。
-  #   候选里只放地区组（地区组已排除「🔗 」节点），不放 🚀 节点选择 / 🐟 漏网之鱼，
-  #   否则会出现 落地 -> 前置 -> 节点选择 -> 落地 的环路。
-  # - 🔗 链式落地：第二跳。组内是 HTTP provider 复制出的全部「🔗 」节点，
-  #   它们统一经 🔗 链式前置 出站。
+  # - 🔗 链式前置：第一跳。include-all-proxies 从当前订阅动态吸收原始节点，
+  #   不写死节点名，也不会吸收 chainpool 复制出的「🔗 」节点。
+  # - 🔗 链式落地：第二跳。HTTP provider 从当前订阅动态复制节点并注入
+  #   dialer-proxy: 🔗 链式前置；复制出的节点统一带「🔗 」前缀。
 
 rule-providers:
   AI:

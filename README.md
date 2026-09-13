@@ -4,7 +4,7 @@
 
 ## 文件
 
-- `subconverter-shellcrash-needs.yaml`：唯一模板。分流 `🤖 AI 服务`、`📲 Telegram`、`🎯 国内流量`，其余流量交给 `🐟 漏网之鱼`，并提供 `🔗 链式落地` 两跳链式代理。
+- `shellcrash.yaml`：唯一模板。分流 `🤖 AI 服务`、`📲 Telegram`、`🎯 国内流量`，其余流量交给 `🐟 漏网之鱼`，并提供 `🔗 链式落地` 两跳链式代理。
 
 ## 设计目标
 
@@ -84,11 +84,12 @@ proxy-providers:
       dialer-proxy: 🔗 链式前置
 ```
 
-provider 会读取订阅源的 `proxies` 段，复制出带 `🔗 ` 前缀的节点；每个副本的出站先经过
-`🔗 链式前置`，形成两跳：
+provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真实节点，并给每个副本加上
+`🔗 ` 前缀和节点级 `dialer-proxy: 🔗 链式前置`；模板不写死任何入口或出口节点参数。
+因此每次订阅内容变化后，链式入口池和链式落地池都随真实节点变化：
 
 ```text
-客户端 → 🔗 链式前置（第一跳，手动选） → 🔗 链式落地中的节点（第二跳） → 目标
+客户端 → 当前订阅中的入口节点 → 当前订阅复制出的出口节点 → 目标
 ```
 
 使用前必须满足：
@@ -99,32 +100,39 @@ provider 会读取订阅源的 `proxies` 段，复制出带 `🔗 ` 前缀的节
 - 生成配置会包含订阅源地址，这是运行时拉取 provider 所必需的；不要公开分享生成配置或把真实订阅地址提交到仓库。
 - `path` 使用相对路径，基准是 Mihomo 的 `-d` 目录；`./providers/chainpool.yaml` 可用于普通客户端，避免绑定 `/etc/ShellCrash/yamls/` 等宿主机布局。
 
-### 为什么不直接生成顶层链式节点
+### 动态节点级链式，而不是静态节点清单
 
-Subconverter 的 Clash 生成流程会把转换后的节点列表整体写入最终 `proxies:`，但模板没有
-“遍历每个注入节点、复制一份并追加 `dialer-proxy`”的通用钩子。因此，本模板不能仅靠
-YAML 自动生成用户示例中的顶层链式节点：
+用户示例中的核心字段是出口节点上的：
 
 ```yaml
-# 这种写法需要上游转换器或脚本实际生成两份完整节点配置
-- name: 落地节点（链式）
-  type: socks5
-  server: example.invalid
-  port: 1080
+- name: "🔗 当前订阅中的出口节点"
+  # 当前订阅节点的真实参数由 provider 动态提供
+  dialer-proxy: "🔗 链式前置"
+```
+
+本模板通过 HTTP `proxy-provider` 的 `override` 动态注入这个字段：
+
+```yaml
+override:
+  additional-prefix: "🔗 "
   dialer-proxy: 🔗 链式前置
 ```
 
-如果客户端只显示顶层 `proxies`，不支持 provider 节点，或面板错误地只请求
+因此不会把入口节点、出口节点、服务器、端口或认证参数静态写进模板。`🔗 链式前置`
+使用 `include-all-proxies: true` 动态吸收当前订阅的原始节点；`🔗 链式落地` 动态使用
+provider 复制出的节点。
+
+客户端若只显示顶层 `proxies`、不支持 provider 节点，或面板错误地只请求
 `/proxies/<provider-node>` 而不读取 `/providers/proxies`，则可能看到「链式落地为空」。
-这属于客户端/provider 兼容性边界，不是把 `type: file` 路径改来改去就能解决的问题；此时需要
-使用客户端支持的 provider UI，或在上游额外生成顶层链式节点。
+这是客户端/provider 命名空间兼容性边界，不是把节点静态化或改成 `type: file` 就能解决的问题；
+此时需要使用客户端支持 provider UI，或由上游另行生成顶层链式节点。
 
 ### 防环约束
 
-- `🔗 链式前置` 使用 `include-all-proxies: true`，只纳入最终配置中的订阅本体节点，不吸收
-  `chainpool` 复制出的 `🔗 ` 节点。
-- 所有使用 `include-all: true` 的地区组都带 `exclude-filter: "🔗"`，避免链式副本进入前置候选。
-- 前置组只引用地区组，不引用 `🚀 节点选择`、`🐟 漏网之鱼` 或 `🔗 链式落地`，避免
+- `🔗 链式前置` 使用 `include-all-proxies: true`，动态纳入当前订阅本体节点，不写死
+  `proxies` 节点清单，也不吸收 `chainpool` 复制出的 `🔗 ` 节点。
+- 所有使用 `include-all: true` 的地区组都带 `exclude-filter: "🔗"`，避免链式副本进入普通地区候选。
+- 链式前置不引用 `🚀 节点选择`、`🐟 漏网之鱼` 或 `🔗 链式落地`，避免
   `落地 → 前置 → 节点选择 → 落地` 环路。
 - `health-check` 默认关闭：开启会让每个链式节点都经前置节点额外测速一遍。
 
@@ -159,7 +167,7 @@ YAML 自动生成用户示例中的顶层链式节点：
 
 - 生成配置执行 `CrashCore -t -d /home -f /home/config.yaml` 成功。
 - HTTP provider 运行态：`vehicleType=HTTP`、`chainpool` 加载 38 个节点，38 个均带 `🔗 ` 前缀，38 个均保留 `dialer-proxy: 🔗 链式前置`。
-- 防环：`🔗 链式前置` 有 43 个候选（38 个本体节点 + 5 个地区组），其中 `🔗 ` 节点为 0；5 个地区组均无 `🔗 ` 泄漏；`🔗 链式落地` 有 38 个成员且全部带前缀。
+- 防环：`🔗 链式前置` 的候选由同一份运行态 `/proxies` 动态读回，`🔗 ` 链式节点数必须为 0；`🔗 链式落地` 的成员必须全部来自当前 `chainpool`，带前缀并保留 `dialer-proxy: 🔗 链式前置`。
 - 规则 provider 运行态全部加载：`cn` 111035 条、`cnip` 9624 条、`AI` 273 条、`Telegram` 36 条、`TelegramIP` 24 条；`/rules` 共 16 条，AI/Telegram 位于 cn/cnip 之前。
 - 实际分流：通过隔离核心访问 `http://www.baidu.com/` 返回 `HTTP 200`，日志出现 1 次 `RuleSet(cn)` 命中 `🎯 国内流量`；运行态 `🎯 国内流量.now` 为 `DIRECT`。
 - 两跳功能差分：正常前置 + 链式落地 `HTTP 204`；将 `🐟 漏网之鱼` 切为 `DIRECT` 的对照 `HTTP 204`；前置切换到死节点后链式 `HTTP 502`；恢复前置后链式 `HTTP 204`。
