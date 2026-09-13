@@ -4,7 +4,8 @@
 
 ## 文件
 
-- `shellcrash.yaml`：唯一模板。分流 `🤖 AI 服务`、`📲 Telegram`、`🎯 国内流量`，其余流量交给 `🐟 漏网之鱼`，并提供 `🔗 链式落地` 两跳链式代理。
+- `shellcrash.yaml`：Mihomo YAML 基础模板。分流 `🤖 AI 服务`、`📲 Telegram`、`🎯 国内流量`，其余流量交给 `🐟 漏网之鱼`，并提供 `🔗 链式落地` 两跳链式代理。
+- `shellcrash.ini`：SubConverter 外部配置入口，通过 `clash_rule_base` 指向上面的 YAML 模板。MiSub 的 `subConfig` 应指向这个 INI，而不是直接指向 YAML。
 
 ## 设计目标
 
@@ -95,11 +96,38 @@ provider 会读取订阅源当前返回的 `proxies` 段，动态复制每个真
 使用前必须满足：
 
 - 只能传入**单个**订阅 URL；当前模板不负责把多个 URL 自动拆分后再提供给 Mihomo。
-- 该 URL 必须返回 Mihomo/Clash YAML，并包含 `proxies:`；纯 URI 列表不适用这个 provider。
+- 必须使用支持 SubConverter 外部配置的转换链路：`subConfig` 指向公开的 `shellcrash.ini`，由其中的 `clash_rule_base` 指向 `shellcrash.yaml`。
+- `request.url` 只会在兼容 SubConverter 模板语法的转换后端渲染。直接把仓库里的原始 YAML 模板交给 Mihomo，`{{ request.url }}` 不会自动求值。
+- provider 源应返回包含顶层 `proxies:` 的 Mihomo/Clash YAML；Mihomo 也可在部分版本中回落解析 URI/base64 订阅，但使用 YAML provider 源更容易跨客户端验证。
 - `exclude-type` 使用 Mihomo provider 的官方字段，排除不适合经 TCP 前置中转的 UDP 类节点。
-- `request.url` 只会在兼容 Subconverter 模板语法的转换后端渲染。直接把仓库里的原始模板交给 Mihomo，`{{ request.url }}` 不会自动求值。
 - 生成配置会包含订阅源地址，这是运行时拉取 provider 所必需的；不要公开分享生成配置或把真实订阅地址提交到仓库。
 - `path` 使用相对路径，基准是 Mihomo 的 `-d` 目录；`./providers/chainpool.yaml` 可用于普通客户端，避免绑定 `/etc/ShellCrash/yamls/` 等宿主机布局。
+
+### MiSub / SubConverter 使用方式
+
+将 MiSub 的 `subConfig` 设置为：
+
+```text
+https://raw.githubusercontent.com/Luckylos/shellcrashyaml/main/shellcrash.ini
+```
+
+`shellcrash.ini` 再通过 `clash_rule_base` 指向：
+
+```text
+https://raw.githubusercontent.com/Luckylos/shellcrashyaml/main/shellcrash.yaml
+```
+
+最终链路为：
+
+```text
+MiSub → SubConverter `/sub?target=clash&url=...&config=...`
+      → shellcrash.ini
+      → shellcrash.yaml
+      → 渲染 request.url
+      → 生成最终 Mihomo YAML
+```
+
+两个仓库文件只包含公开模板和外部配置，不包含真实订阅地址、节点认证或 token。
 
 ### 动态节点级链式，而不是静态节点清单
 
