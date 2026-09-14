@@ -1,39 +1,28 @@
-# ShellCrash 当前实际需求的 Mihomo YAML 配置
+# ShellCrash 当前实际需求的订阅转换后端模板
 # 说明：
-# - 本文件通过两个官方 HTTP proxy-provider 自包含读取固定的 MiSub profile，不依赖
-#   Subconverter 注入顶层节点，也不依赖非 Mihomo 的模板变量。
-# - frontpool 作为动态前置池；chainpool 读取同一份节点源，并通过 override.dialer-proxy
-#   生成动态链式落地节点。
+# - 这是一份供 Mihomo / 订阅转换后端使用的 YAML 模板，不直接内置节点。
+# - 转换后端负责注入订阅节点；本文件只表达当前 ShellCrash 的路由需求、DNS 行为与策略组结构。
 # - 路由需求：AI 优先美区、Telegram 优先新加坡、中国大陆直连、其余流量经「🐟 漏网之鱼」走代理。
 # - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
 # - 地区组采用“手动指定节点优先，失效后自动 fallback 到同地区可连通节点”的结构。
-# - 该方案不依赖 ShellCrash 专用目录，详见文件末尾的链式代理说明。
 
 x-filter-hk: &filter-hk "(?i)港|hk|hong ?kong|🇭🇰"
 x-filter-jp: &filter-jp "(?i)日|jp|japan|tokyo|🇯🇵"
 x-filter-sg: &filter-sg "(?i)新|sg|singapore|🇸🇬"
 x-filter-us: &filter-us "(?i)美|us|usa|america|united states|🇺🇸"
 x-filter-known-regions: &filter-known-regions "(?i)港|hk|hong ?kong|🇭🇰|日|jp|japan|tokyo|🇯🇵|新|sg|singapore|🇸🇬|美|us|usa|america|united states|🇺🇸"
-x-subscription-url: &subscription-url "https://misub.543822.xyz/luckyss?target=clash"
-
-# provider 节点使用不同前缀：frontpool 使用「🛰️ 前置 」；chainpool 使用「🔗 」作为链式标记。
-# 普通地区组和链式前置组只读取 frontpool，链式落地组只读取 chainpool，避免 dialer 环路。
-x-filter-chain: &filter-chain "🔗"
-x-filter-chain-or-known-regions: &filter-chain-or-known-regions "(?i)🔗|港|hk|hong ?kong|🇭🇰|日|jp|japan|tokyo|🇯🇵|新|sg|singapore|🇸🇬|美|us|usa|america|united states|🇺🇸"
 
 x-region-auto: &region-auto
   type: url-test
   url: http://www.gstatic.com/generate_204
   interval: 300
   tolerance: 50
-  use:
-    - frontpool
+  include-all: true
 
 x-region-manual: &region-manual
   type: select
-  use:
-    - frontpool
+  include-all: true
 
 x-region-fallback: &region-fallback
   type: fallback
@@ -89,41 +78,6 @@ dns:
     - "*.local"
     - "*.localhost"
 
-# 动态节点池：两个 provider 读取同一份固定 MiSub profile。
-# - frontpool 只作为前置节点池，不设置 dialer-proxy。
-# - chainpool 通过 override.dialer-proxy 将每个落地节点绑定到前置组。
-# - 两个 provider 使用不同前缀，避免节点名称冲突；🛰️ 前置节点只供普通地区组和链式前置组使用。
-# - 源地址必须返回 Mihomo/Clash YAML 且包含 proxies 段。
-# - type: http + 相对 path 适用于普通 Mihomo 客户端；path 基准是 mihomo 的 -d 目录。
-# - health-check 默认关闭：开启会让每个链式节点都经前置节点额外测速一遍。
-proxy-providers:
-  frontpool:
-    type: http
-    url: *subscription-url
-    path: ./providers/frontpool.yaml
-    interval: 86400
-    exclude-type: "hysteria|hysteria2|tuic|wireguard"
-    health-check:
-      enable: false
-      url: http://www.gstatic.com/generate_204
-      interval: 300
-    override:
-      additional-prefix: "🛰️ 前置 "
-
-  chainpool:
-    type: http
-    url: *subscription-url
-    path: ./providers/chainpool.yaml
-    interval: 86400
-    exclude-type: "hysteria|hysteria2|tuic|wireguard"
-    health-check:
-      enable: false
-      url: http://www.gstatic.com/generate_204
-      interval: 300
-    override:
-      additional-prefix: "🔗 "
-      dialer-proxy: "🔗 链式前置"
-
 proxy-groups:
   # ── 一、入口策略组：规则命中后的落点，日常主要在这里切换 ──
 
@@ -135,7 +89,6 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇺🇸 美国
       - 其余地区
-      - 🔗 链式落地
 
   - name: 🤖 AI 服务
     type: select
@@ -145,7 +98,6 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇭🇰 香港
       - 其余地区
-      - 🔗 链式落地
       - 🚀 节点选择
 
   - name: 📲 Telegram
@@ -156,7 +108,6 @@ proxy-groups:
       - 🇯🇵 日本
       - 🇺🇸 美国
       - 其余地区
-      - 🔗 链式落地
       - 🚀 节点选择
 
   # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
@@ -182,26 +133,9 @@ proxy-groups:
       - 🇸🇬 新加坡
       - 🇺🇸 美国
       - 其余地区
-      - 🔗 链式落地
       - DIRECT
 
-  # ── 二、链式代理：出口节点的 dialer-proxy 动态指向第一跳 ──
-  # - 🔗 链式前置：第一跳。frontpool 动态读取原始节点，不写死任何节点名。
-  # - 🔗 链式落地：第二跳。chainpool 读取同一节点源并注入
-  #   dialer-proxy: 🔗 链式前置；复制出的节点统一带「🔗 」前缀。
-
-  - name: 🔗 链式前置
-    type: select
-    use:
-      - frontpool
-
-  - name: 🔗 链式落地
-    type: select
-    use:
-      - chainpool
-    empty-fallback: REJECT
-
-  # ── 三、地区主组：入口策略组的实际落点。先用「手动」，失效自动回退「自动」 ──
+  # ── 二、地区主组：入口策略组的实际落点。先用「手动」，失效自动回退「自动」 ──
 
   - name: 🇭🇰 香港
     <<: *region-fallback
@@ -233,7 +167,7 @@ proxy-groups:
       - 其余地区-手动
       - 其余地区-自动
 
-  # ── 四、地区内部实现组：按地区成对排列，一般不需要直接操作 ──
+  # ── 三、地区内部实现组：按地区成对排列，一般不需要直接操作 ──
   #   -手动：同地区内手动指定具体节点（select，不测速）
   #   -自动：同地区内自动择优（url-test），仅作同地区兜底
 
@@ -267,17 +201,12 @@ proxy-groups:
 
   - name: 其余地区-手动
     <<: *region-manual
-    exclude-filter: *filter-chain-or-known-regions
+    exclude-filter: *filter-known-regions
 
   # 自动组：仅作为同地区兜底，不参与跨地区回退
   - name: 其余地区-自动
     <<: *region-auto
-    exclude-filter: *filter-chain-or-known-regions
-
-  # 链式代理：
-  # - 🔗 链式前置：第一跳。frontpool 从固定 MiSub profile 动态读取原始节点。
-  # - 🔗 链式落地：第二跳。chainpool 从同一 profile 动态复制节点并注入
-  #   dialer-proxy: 🔗 链式前置；复制出的节点统一带「🔗 」前缀。
+    exclude-filter: *filter-known-regions
 
 rule-providers:
   AI:
