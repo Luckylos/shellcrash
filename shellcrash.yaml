@@ -7,11 +7,11 @@
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
 # - 地区组采用“手动指定节点优先，失效后自动 fallback 到同地区可连通节点”的结构。
 
-x-filter-hk: &filter-hk "(?i)港|hk|hong ?kong|🇭🇰"
-x-filter-jp: &filter-jp "(?i)日|jp|japan|tokyo|🇯🇵"
-x-filter-sg: &filter-sg "(?i)新|sg|singapore|🇸🇬"
-x-filter-us: &filter-us "(?i)美|us|usa|america|united states|🇺🇸"
-x-filter-known-regions: &filter-known-regions "(?i)港|hk|hong ?kong|🇭🇰|日|jp|japan|tokyo|🇯🇵|新|sg|singapore|🇸🇬|美|us|usa|america|united states|🇺🇸"
+x-filter-hk: &filter-hk '(?i)(?:香港|hong[ -]?kong|\b(?:hk|hkg)\b|🇭🇰)'
+x-filter-jp: &filter-jp '(?i)(?:日本|japan|东京|\b(?:jp|jpn)\b|🇯🇵)'
+x-filter-sg: &filter-sg '(?i)(?:新加坡|singapore|\b(?:sg|sgp)\b|🇸🇬)'
+x-filter-us: &filter-us '(?i)(?:美国|美东|美西|america|united[ -]?states|\b(?:us|usa|lax|sfo|jfk|sjc)\b|🇺🇸)'
+x-filter-known-regions: &filter-known-regions '(?i)(?:香港|hong[ -]?kong|\b(?:hk|hkg)\b|🇭🇰|日本|japan|东京|\b(?:jp|jpn)\b|🇯🇵|新加坡|singapore|\b(?:sg|sgp)\b|🇸🇬|美国|美东|美西|america|united[ -]?states|\b(?:us|usa|lax|sfo|jfk|sjc)\b|🇺🇸)'
 
 x-region-auto: &region-auto
   type: url-test
@@ -110,7 +110,8 @@ proxy-groups:
       - 其余地区
       - 🚀 节点选择
 
-  # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）
+  # 国内流量：默认直连，保留代理作为手动备选（应对个别国内域名需要走代理的场景）。
+  # DIRECT 必须保持第一候选；规则继续指向本组，不改为写死的 DIRECT。
   - name: 🎯 国内流量
     type: select
     proxies:
@@ -227,6 +228,14 @@ rule-providers:
     url: https://github.com/666OS/rules/raw/release/mihomo/ip/China.mrs
 
 rules:
+  # 本地域名显式直连；fake-ip-filter 只控制 DNS 返回形式，不等于路由直连。
+  - DOMAIN,localhost,DIRECT
+  - DOMAIN,router,DIRECT
+  - DOMAIN-SUFFIX,lan,DIRECT
+  - DOMAIN-SUFFIX,local,DIRECT
+  - DOMAIN-SUFFIX,router,DIRECT
+  - DOMAIN-SUFFIX,internal,DIRECT
+
   # 本地/私网直连：保护宿主机、Docker、CGNAT 与 IPv6 本地链路
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
