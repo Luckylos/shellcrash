@@ -1,6 +1,6 @@
 # shellcrashyaml
 
-基于当前 ShellCrash 实际需求整理的一份 **Mihomo / 订阅转换后端模板 YAML**。
+基于当前 ShellCrash 实际需求整理的一份 **Mihomo / Clash Meta / 订阅转换后端通用 YAML 模板**。
 
 ## 文件
 
@@ -10,7 +10,9 @@
 
 ## 设计目标
 
-- 适配 **订阅转换后端** 使用，不直接内置具体节点
+- 适配 **Mihomo / Clash Meta / 订阅转换后端** 使用，不直接内置具体节点
+- 没有 ShellCrash 覆盖时，模板自身也提供完整的 Route 等价 DNS 行为
+- 通用客户端控制器仅绑定本机回环；宿主 ShellCrash 继续使用自身控制器配置
 - 保留当前 ShellCrash 的核心路由需求
 - 风格参考 `666OS/YYDS` 的 `Pro_cn.yaml`
 - 地区节点支持“手动指定优先，失效后同地区自动回退”
@@ -26,9 +28,9 @@
 - `🐟 漏网之鱼`：其余全部流量默认跟随 `🚀 节点选择`
 - 未命中港/日/新/美筛选规则的节点：归入 `其余地区`
 - 私网/回环/IPv6 本地链路：强制直连
-- DNS：`fake-ip + 0.0.0.0:1053 + 阿里/腾讯 DoH`，国内域名按 `rule-set:cn` 走国内 DoH
+- DNS：通用客户端使用 `redir-host + respect-rules`；国内域名按 `rule-set:cn` 走国内 DoH，境外域名使用境外 DoH；宿主 ShellCrash 可覆盖为自身的 Route 生成形态
 
-结构规模：20 个 `proxy-group`、0 个 `proxy-provider`、5 个 `rule-provider`、16 条 rules、0 个 listener。
+结构规模：20 个 `proxy-group`、0 个 `proxy-provider`、5 个 `rule-provider`、22 条 rules、0 个 listener。
 
 ## 策略组顺序
 
@@ -56,7 +58,8 @@ Mihomo 允许前向引用（第一段引用后面才定义的地区组），所�
 - `cn`：`666OS/rules` 的 `domain/China.mrs`
 - `cnip`：`666OS/rules` 的 `ip/China.mrs`
 - 不使用 `GEOIP,CN`：`cnip` 已覆盖，同时避免依赖 geoip 数据库下载
-- `cnip` 带 `no-resolve`，避免 fake-ip 模式下为 IP 规则强制触发 DNS 解析
+- `cnip` 带 `no-resolve`，避免对裸 IP 规则强制触发 DNS 解析
+- 所有远程规则集通过 `🚀 节点选择` 下载，避免手机直连 GitHub 失败后规则集为空
 
 `rule-provider` 名称**必须是 `cn`**：`dns.nameserver-policy` 以 `rule-set:cn` 引用它，改名会变成悬空引用。
 
@@ -79,7 +82,7 @@ AI 规则刻意排在国内规则之前，避免国内域名规则集误收 AI �
 100.64.0.0/10  169.254.0.0/16  ::1/128  fc00::/7  fe80::/10
 ```
 
-这些**不能删**。当前 ShellCrash 以 TUN/TPROXY + host 网络运行；一旦把私网段也灌进隧道，宿主机、容器互访与 LAN 可达性会一起断掉。
+这些**不能删**。宿主 ShellCrash 以 TUN/TPROXY + host 网络运行；手机等第三方客户端也必须在自身设置中启用 VPN/TUN，YAML 只能定义规则和 DNS，不能替客户端创建系统 VPN。
 
 `🐟 漏网之鱼` 组内末位保留 `DIRECT` 作为**手动**开关，仅用于临时排障，默认不选中。
 

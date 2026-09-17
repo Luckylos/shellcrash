@@ -1,7 +1,8 @@
-# ShellCrash 当前实际需求的订阅转换后端模板
+# ShellCrash / Mihomo / Clash Meta 通用订阅转换后端模板
 # 说明：
-# - 这是一份供 Mihomo / 订阅转换后端使用的 YAML 模板，不直接内置节点。
-# - 转换后端负责注入订阅节点；本文件只表达当前 ShellCrash 的路由需求、DNS 行为与策略组结构。
+# - 这是一份供 Mihomo 兼容客户端使用的 YAML 模板，不直接内置节点。
+# - 转换后端负责注入订阅节点；本文件本身必须能在没有 ShellCrash 覆盖的客户端上工作。
+# - 宿主机 ShellCrash 可以继续把 DNS 生成成自己的 Route 实现，但不改变本模板的路由意图。
 # - 路由需求：AI 优先美区、Telegram 优先新加坡、中国大陆直连、其余流量经「🐟 漏网之鱼」走代理。
 # - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
@@ -34,49 +35,55 @@ x-rule-set-domain: &rule-set-domain
   behavior: domain
   format: mrs
   interval: 86400
+  # 手机等无 ShellCrash 覆盖的客户端可能无法直连 GitHub。
+  # 通过已注入的代理组下载规则集，避免规则集为空导致全量误走 MATCH。
+  proxy: 🚀 节点选择
 
 x-rule-set-ipcidr: &rule-set-ipcidr
   type: http
   behavior: ipcidr
   format: mrs
   interval: 86400
+  proxy: 🚀 节点选择
 
 mode: rule
 mixed-port: 7890
 allow-lan: true
 ipv6: true
 log-level: info
-external-controller: ":9090"
+external-controller: "127.0.0.1:9090"
 
 profile:
   store-selected: true
 
-# 保留当前 ShellCrash 的 DNS 需求：
-# - fake-ip
-# - 监听 0.0.0.0:1053 供局域网/宿主机使用
-# - 仅对局域网/本地域名做 fake-ip 排除
-# - 上游继续使用阿里/腾讯 DoH
-# - 国内域名走国内 DoH（依赖下方 rule-providers 中的 cn，名称必须保持为 cn）
+# 通用客户端 DNS：使用 Mihomo 原生 redir-host，等价于 Route 的真实地址语义。
+# 宿主 ShellCrash 若由自身生成配置，仍可按 dns_mod=route 使用 fake-ip + +.* 实现同一行为。
 dns:
   enable: true
   listen: 0.0.0.0:1053
   ipv6: true
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.1/16
+  use-hosts: true
+  enhanced-mode: redir-host
+  respect-rules: true
   default-nameserver:
     - 223.5.5.5
     - 1.1.1.1
-  nameserver:
+  # 国内域名和 DIRECT 连接使用国内 DNS，避免国内域名被境外解析。
+  direct-nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
   nameserver-policy:
     "rule-set:cn":
       - https://dns.alidns.com/dns-query
       - https://doh.pub/dns-query
-  fake-ip-filter:
-    - "*.lan"
-    - "*.local"
-    - "*.localhost"
+  # 境外域名使用境外 DoH；解析代理节点本身时使用可直达的解析器，避免循环依赖。
+  proxy-server-nameserver:
+    - https://223.5.5.5/dns-query
+    - 2400:3200::1
+  nameserver:
+    - https://cloudflare-dns.com/dns-query
+    - https://dns.google/dns-query
+    - https://doh.opendns.com/dns-query
 
 proxy-groups:
   # ── 一、入口策略组：规则命中后的落点，日常主要在这里切换 ──
@@ -228,7 +235,7 @@ rule-providers:
     url: https://github.com/666OS/rules/raw/release/mihomo/ip/China.mrs
 
 rules:
-  # 本地域名显式直连；fake-ip-filter 只控制 DNS 返回形式，不等于路由直连。
+  # 本地域名显式直连；redir-host 只决定 DNS 返回真实地址，不等于路由直连。
   - DOMAIN,localhost,DIRECT
   - DOMAIN,router,DIRECT
   - DOMAIN-SUFFIX,lan,DIRECT
@@ -258,7 +265,7 @@ rules:
   - RULE-SET,TelegramIP,📲 Telegram,no-resolve
 
   # 中国大陆直连：域名走 cn 规则集，裸 IP 走 cnip 规则集。
-  # cnip 带 no-resolve，避免在 fake-ip 模式下为 IP 规则强制触发 DNS 解析。
+  # cnip 带 no-resolve，避免对裸 IP 规则强制触发 DNS 解析。
   # 不使用 GEOIP,CN：ChinaIP 规则集已覆盖，且可避免依赖 geoip 数据库下载。
   - RULE-SET,cn,🎯 国内流量
   - RULE-SET,cnip,🎯 国内流量,no-resolve
