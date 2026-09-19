@@ -16,7 +16,7 @@ x-filter-known-regions: &filter-known-regions '(?i)(?:香港|hong[ -]?kong|\b(?:
 
 x-region-auto: &region-auto
   type: url-test
-  url: http://www.gstatic.com/generate_204
+  url: https://www.gstatic.com/generate_204
   interval: 300
   tolerance: 50
   include-all: true
@@ -27,7 +27,7 @@ x-region-manual: &region-manual
 
 x-region-fallback: &region-fallback
   type: fallback
-  url: http://www.gstatic.com/generate_204
+  url: https://www.gstatic.com/generate_204
   interval: 300
 
 x-rule-set-domain: &rule-set-domain
