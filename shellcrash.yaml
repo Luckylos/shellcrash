@@ -6,7 +6,7 @@
 # - 路由需求：AI 优先美区、Telegram 优先新加坡、中国大陆直连、其余流量经「🐟 漏网之鱼」走代理。
 # - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
-# - 地区组采用“手动指定节点优先，失效后自动 fallback 到同地区可连通节点”的结构。
+# - 地区组采用“自动测速优先，失败后 fallback 到同地区手动选择”的结构。
 
 x-filter-hk: &filter-hk '(?i)(?:香港|hong[ -]?kong|\b(?:hk|hkg)\b|🇭🇰)'
 x-filter-jp: &filter-jp '(?i)(?:日本|japan|东京|\b(?:jp|jpn)\b|🇯🇵)'
@@ -143,41 +143,41 @@ proxy-groups:
       - 其余地区
       - DIRECT
 
-  # ── 二、地区主组：入口策略组的实际落点。先用「手动」，失效自动回退「自动」 ──
+  # ── 二、地区主组：入口策略组的实际落点。先用「自动」，失败回退「手动」 ──
 
   - name: 🇭🇰 香港
     <<: *region-fallback
     proxies:
-      - 🇭🇰 香港-手动
       - 🇭🇰 香港-自动
+      - 🇭🇰 香港-手动
 
   - name: 🇯🇵 日本
     <<: *region-fallback
     proxies:
-      - 🇯🇵 日本-手动
       - 🇯🇵 日本-自动
+      - 🇯🇵 日本-手动
 
   - name: 🇸🇬 新加坡
     <<: *region-fallback
     proxies:
-      - 🇸🇬 新加坡-手动
       - 🇸🇬 新加坡-自动
+      - 🇸🇬 新加坡-手动
 
   - name: 🇺🇸 美国
     <<: *region-fallback
     proxies:
-      - 🇺🇸 美国-手动
       - 🇺🇸 美国-自动
+      - 🇺🇸 美国-手动
 
   - name: 其余地区
     <<: *region-fallback
     proxies:
-      - 其余地区-手动
       - 其余地区-自动
+      - 其余地区-手动
 
   # ── 三、地区内部实现组：按地区成对排列，一般不需要直接操作 ──
-  #   -手动：同地区内手动指定具体节点（select，不测速）
-  #   -自动：同地区内自动择优（url-test），仅作同地区兜底
+  #   -手动：同地区内手动指定具体节点（select，不测速），作为自动组失败时的回退
+  #   -自动：同地区内自动择优（url-test），由地区主组优先使用
 
   - name: 🇭🇰 香港-手动
     <<: *region-manual
@@ -211,7 +211,7 @@ proxy-groups:
     <<: *region-manual
     exclude-filter: *filter-known-regions
 
-  # 自动组：仅作为同地区兜底，不参与跨地区回退
+  # 自动组：由地区主组优先使用，失败后回退到同地区手动组，不参与跨地区回退
   - name: 其余地区-自动
     <<: *region-auto
     exclude-filter: *filter-known-regions
