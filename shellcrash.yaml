@@ -235,6 +235,17 @@ rule-providers:
     url: https://github.com/666OS/rules/raw/release/mihomo/ip/China.mrs
 
 rules:
+  #cloudflare隧道
+  IP-CIDR,198.41.192.0/24,no-resolve
+  IP-CIDR,198.41.200.0/24,no-resolve
+  IP-CIDR,198.41.218.0/24,no-resolve
+  IP-CIDR,198.41.219.0/24,no-resolve
+  IP-CIDR6,2606:4700:a0::/124,no-resolve
+  IP-CIDR6,2606:4700:a8::/124,no-resolve
+  IP-CIDR6,2606:4700:a1::/124,no-resolve
+  IP-CIDR6,2606:4700:a9::/124,no-resolve
+  DOMAIN-SUFFIX,argotunnel.com
+
   # 本地域名显式直连；redir-host 只决定 DNS 返回真实地址，不等于路由直连。
   - DOMAIN,localhost,DIRECT
   - DOMAIN,router,DIRECT
@@ -254,10 +265,8 @@ rules:
   - IP-CIDR6,fc00::/7,DIRECT,no-resolve
   - IP-CIDR6,fe80::/10,DIRECT,no-resolve
 
-  # 显式补充 AI 域名，避免外部 AI 规则集未覆盖时走错组
-  - DOMAIN-SUFFIX,nvidia.com,🤖 AI 服务
-
   # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
+  - DOMAIN-SUFFIX,nvidia.com,🤖 AI 服务
   - RULE-SET,AI,🤖 AI 服务
 
   # Telegram 优先新加坡
