@@ -236,15 +236,15 @@ rule-providers:
 
 rules:
   #cloudflare隧道
-  IP-CIDR,198.41.192.0/24,no-resolve
-  IP-CIDR,198.41.200.0/24,no-resolve
-  IP-CIDR,198.41.218.0/24,no-resolve
-  IP-CIDR,198.41.219.0/24,no-resolve
-  IP-CIDR6,2606:4700:a0::/124,no-resolve
-  IP-CIDR6,2606:4700:a8::/124,no-resolve
-  IP-CIDR6,2606:4700:a1::/124,no-resolve
-  IP-CIDR6,2606:4700:a9::/124,no-resolve
-  DOMAIN-SUFFIX,argotunnel.com
+  IP-CIDR,198.41.192.0/24,DIRECT,no-resolve
+  IP-CIDR,198.41.200.0/24,DIRECT,no-resolve
+  IP-CIDR,198.41.218.0/24,DIRECT,no-resolve
+  IP-CIDR,198.41.219.0/24,DIRECT,no-resolve
+  IP-CIDR6,2606:4700:a0::/124,DIRECT,no-resolve
+  IP-CIDR6,2606:4700:a8::/124,DIRECT,no-resolve
+  IP-CIDR6,2606:4700:a1::/124,DIRECT,no-resolve
+  IP-CIDR6,2606:4700:a9::/124,DIRECT,no-resolve
+  DOMAIN-SUFFIX,argotunnel.com,DIRECT
 
   # 本地域名显式直连；redir-host 只决定 DNS 返回真实地址，不等于路由直连。
   - DOMAIN,localhost,DIRECT
