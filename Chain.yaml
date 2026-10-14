@@ -7,8 +7,9 @@
 # - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
 # - 地区组采用“自动测速优先，失败后 fallback 到同地区手动选择”的结构。
-# - 链式代理：proxy-providers.chainpool 复制本次订阅节点并注入节点级 dialer-proxy，
-#   形成「🔗 链式前置 → 🔗 链式落地」两跳。模板本身不保存订阅地址。
+# - 链式代理：proxy-providers.chainpool 读取 ShellCrash 下载进 home 的订阅产物，
+#   复制每个节点并注入节点级 dialer-proxy，形成「🔗 链式前置 → 🔗 链式落地」两跳。
+#   模板本身不保存订阅地址。
 
 x-filter-hk: &filter-hk '(?i)(?:香港|hong[ -]?kong|\b(?:hk|hkg)\b|🇭🇰)'
 x-filter-jp: &filter-jp '(?i)(?:日本|japan|东京|\b(?:jp|jpn)\b|🇯🇵)'
@@ -90,16 +91,21 @@ dns:
     - https://doh.opendns.com/dns-query
 
 proxy-providers:
-  # 链式落地池：读取本次请求的订阅地址（SubConverter 把请求参数渲染为 request.url），
-  # 复制每个节点并注入节点级 dialer-proxy。仓库里不保存订阅地址。
-  # path 用相对路径：基准是 mihomo 的 -d 目录（ShellCrash 为 /etc/ShellCrash），
-  # 绝对路径会被 SAFE_PATHS 拒绝。
+  # 链式落地池：直接读取 ShellCrash 下载进 home 的那份订阅产物
+  # （-d /etc/ShellCrash 下的 ./yamls/config.yaml，即 MiSub 输出，含 proxies 段）。
+  #
+  # 为什么不用 url: "{{ request.url }}"：
+  # MiSub 的 clash-yaml-profile 模板模式（响应头 x-misub-template-mode: clash-yaml-profile）
+  # 只做 YAML 解析 → 合并 proxies → dump，不渲染任何模板变量；{{ }} 会原样留在产物里，
+  # provider 拉取必然失败、链式落地为空。SubConverter 才支持 {{ request.url }}。
+  #
+  # path 必须是相对路径：基准是 mihomo 的 -d 目录，绝对路径会被 SAFE_PATHS 拒绝。
+  # 该路径是 ShellCrash 专有；其他客户端上 provider 加载为空，链式落地退化为 REJECT，
+  # 其余分流功能不受影响。
   # health-check 必须关闭：开启会让每个链式节点都经前置节点额外测速一遍。
   chainpool:
-    type: http
-    url: "{{ request.url }}"
-    path: ./providers/chainpool.yaml
-    interval: 86400
+    type: file
+    path: ./yamls/config.yaml
     health-check:
       enable: false
       url: https://www.gstatic.com/generate_204
