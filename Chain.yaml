@@ -2,7 +2,7 @@
 # 说明：
 # - 这是一份供 Mihomo 兼容客户端使用的 YAML 模板，不直接内置节点。
 # - 转换后端负责注入订阅节点；本文件本身必须能在没有 ShellCrash 覆盖的客户端上工作。
-# - 宿主机 ShellCrash 可以继续把 DNS 生成成自己的 Route 实现，但不改变本模板的路由意图。
+# - 宿主机可按需覆盖 DNS 监听、地址池与接管设置，但不改变本模板的分流意图。
 # - 路由需求：AI 优先美区、Telegram 优先新加坡、中国大陆直连、其余流量经「🐟 漏网之鱼」走代理。
 # - 已移除固定出口 listeners（原 17891-17899 / 🎛️ 出口 1-9）。需要固定出口的客户端应改用
 #   mixed-port 或另行按需增加，本模板不再提供端口级出口。
@@ -60,35 +60,69 @@ external-controller: "127.0.0.1:9090"
 
 profile:
   store-selected: true
+  store-fake-ip: true
 
-# 通用客户端 DNS：使用 Mihomo 原生 redir-host，等价于 Route 的真实地址语义。
-# 宿主 ShellCrash 若由自身生成配置，仍可按 dns_mod=route 使用 fake-ip + +.* 实现同一行为。
+# 通用客户端使用 fake-ip；DNS 查询按业务类别使用对应策略组。
+# 宿主可覆盖监听、地址池与接管设置，但不应改变本模板的分流意图。
 dns:
   enable: true
-  listen: 0.0.0.0:1053
-  ipv6: true
+  listen: 127.0.0.1:1053
   use-hosts: true
-  enhanced-mode: redir-host
+  use-system-hosts: true
+
+  # 通用 IPv4 基线；IPv6 需与客户端接管能力配套启用。
+  ipv6: false
+
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter-mode: blacklist
+
+  # 本地名称的真实解析依赖 hosts 或客户端的局域网 DNS。
+  # 国内普通域名同样使用 fake-ip，不在此排除整个 cn 规则集。
+  fake-ip-filter:
+    - "*"
+    - "+.lan"
+    - "+.local"
+    - "+.localdomain"
+    - "+.localhost"
+    - "+.home.arpa"
+    - "+.internal"
+    - "+.router"
+    - "time.*.com"
+    - "time.*.gov"
+    - "time.*.edu.cn"
+    - "ntp.*.com"
+    - "+.pool.ntp.org"
+
   respect-rules: true
+
+  # 引导解析使用 IP 字面量 DoH，避免依赖明文 bootstrap。
   default-nameserver:
-    - 223.5.5.5
-    - 1.1.1.1
-  # 国内域名和 DIRECT 连接使用国内 DNS，避免国内域名被境外解析。
-  direct-nameserver:
-    - https://dns.alidns.com/dns-query
-    - https://doh.pub/dns-query
-  nameserver-policy:
-    "rule-set:cn":
-      - https://dns.alidns.com/dns-query
-      - https://doh.pub/dns-query
-  # 境外域名使用境外 DoH；解析代理节点本身时使用可直达的解析器，避免循环依赖。
+    - "https://223.5.5.5/dns-query"
+
+  # 节点域名解析独立于代理启动链路。
   proxy-server-nameserver:
-    - https://223.5.5.5/dns-query
-    - 2400:3200::1
+    - "https://223.5.5.5/dns-query#DIRECT"
+
+  # DIRECT 连接使用阿里 DoH 获取真实地址。
+  direct-nameserver:
+    - "https://223.5.5.5/dns-query#DIRECT"
+  direct-nameserver-follow-policy: false
+
+  # 其他域名的 DNS 连接与 MATCH 的兜底策略组对应。
   nameserver:
-    - https://cloudflare-dns.com/dns-query
-    - https://dns.google/dns-query
-    - https://doh.opendns.com/dns-query
+    - "https://cloudflare-dns.com/dns-query#🐟 漏网之鱼"
+    - "https://dns.google/dns-query#🐟 漏网之鱼"
+
+  nameserver-policy:
+    "rule-set:AI":
+      - "https://cloudflare-dns.com/dns-query#🤖 AI 服务"
+      - "https://dns.google/dns-query#🤖 AI 服务"
+    "rule-set:Telegram":
+      - "https://cloudflare-dns.com/dns-query#📲 Telegram"
+      - "https://dns.google/dns-query#📲 Telegram"
+    "rule-set:cn":
+      - "https://223.5.5.5/dns-query#DIRECT"
 
 proxy-providers:
   # 链式落地池：直接读取 ShellCrash 下载进 home 的那份订阅产物
@@ -304,7 +338,7 @@ rules:
   #- IP-CIDR6,2606:4700:a9::/124,DIRECT,no-resolve
   #- DOMAIN-SUFFIX,argotunnel.com,DIRECT
 
-  # 本地域名显式直连；redir-host 只决定 DNS 返回真实地址，不等于路由直连。
+  # 本地域名显式直连；fake-ip 过滤只决定 DNS 返回形式，不等于路由直连。
   - DOMAIN,localhost,DIRECT
   - DOMAIN,router,DIRECT
   - DOMAIN-SUFFIX,lan,DIRECT
@@ -324,7 +358,6 @@ rules:
   - IP-CIDR6,fe80::/10,DIRECT,no-resolve
 
   # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
-  - DOMAIN-SUFFIX,nvidia.com,🤖 AI 服务
   - RULE-SET,AI,🤖 AI 服务
 
   # Telegram 优先新加坡
