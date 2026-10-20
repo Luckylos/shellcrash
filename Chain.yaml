@@ -62,7 +62,7 @@ profile:
   store-selected: true
   store-fake-ip: true
 
-# 通用客户端使用 fake-ip；DNS 查询按业务类别使用对应策略组。
+# 通用客户端使用 fake-ip；国内域名使用阿里 DoH，其余域名使用境外 DoH。
 # 宿主可覆盖监听、地址池与接管设置，但不应改变本模板的分流意图。
 dns:
   enable: true
@@ -102,27 +102,22 @@ dns:
 
   # 节点域名解析独立于代理启动链路。
   proxy-server-nameserver:
-    - "https://223.5.5.5/dns-query#DIRECT"
+    - "https://223.5.5.5/dns-query"
 
   # DIRECT 连接使用阿里 DoH 获取真实地址。
   direct-nameserver:
-    - "https://223.5.5.5/dns-query#DIRECT"
+    - "https://223.5.5.5/dns-query"
   direct-nameserver-follow-policy: false
 
-  # 其他域名的 DNS 连接与 MATCH 的兜底策略组对应。
+  # 其他域名使用境外 DoH；DNS 上游连接由路由规则决定出口。
   nameserver:
-    - "https://cloudflare-dns.com/dns-query#🐟 漏网之鱼"
-    - "https://dns.google/dns-query#🐟 漏网之鱼"
+    - "https://cloudflare-dns.com/dns-query"
+    - "https://dns.google/dns-query"
 
+  # 复用模板已有的国内域名规则集，不新增 GeoSite 数据依赖。
   nameserver-policy:
-    "rule-set:AI":
-      - "https://cloudflare-dns.com/dns-query#🤖 AI 服务"
-      - "https://dns.google/dns-query#🤖 AI 服务"
-    "rule-set:Telegram":
-      - "https://cloudflare-dns.com/dns-query#📲 Telegram"
-      - "https://dns.google/dns-query#📲 Telegram"
     "rule-set:cn":
-      - "https://223.5.5.5/dns-query#DIRECT"
+      - "https://223.5.5.5/dns-query"
 
 proxy-providers:
   # 链式落地池：直接读取 ShellCrash 下载进 home 的那份订阅产物
