@@ -321,6 +321,27 @@ rule-providers:
     <<: *rule-set-ipcidr
     url: https://github.com/666OS/rules/raw/release/mihomo/ip/China.mrs
 
+  # 本地/私网域名与地址
+  Private:
+    <<: *rule-set-domain
+    url: https://github.com/666OS/rules/raw/release/mihomo/domain/Private.mrs
+  PrivateIP:
+    <<: *rule-set-ipcidr
+    url: https://github.com/666OS/rules/raw/release/mihomo/ip/Private.mrs
+
+  # 明确的直连例外
+  Direct:
+    <<: *rule-set-domain
+    url: https://github.com/666OS/rules/raw/release/mihomo/domain/Direct.mrs
+
+  # 已知国外/代理服务；不是所有国外域名的全集
+  Proxy:
+    <<: *rule-set-domain
+    url: https://github.com/666OS/rules/raw/release/mihomo/domain/Proxy.mrs
+  ProxyIP:
+    <<: *rule-set-ipcidr
+    url: https://github.com/666OS/rules/raw/release/mihomo/ip/Proxy.mrs
+
 rules:
   #cloudflare隧道
   #- IP-CIDR,198.41.192.0/24,DIRECT,no-resolve
@@ -352,6 +373,10 @@ rules:
   - IP-CIDR6,fc00::/7,DIRECT,no-resolve
   - IP-CIDR6,fe80::/10,DIRECT,no-resolve
 
+  # 同源规则集补充本地/私网域名与地址
+  - RULE-SET,Private,DIRECT
+  - RULE-SET,PrivateIP,DIRECT,no-resolve
+
   # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
   - RULE-SET,AI,🤖 AI 服务
 
@@ -359,10 +384,20 @@ rules:
   - RULE-SET,Telegram,📲 Telegram
   - RULE-SET,TelegramIP,📲 Telegram,no-resolve
 
+  # 明确的直连例外优先于通用国外规则
+  - RULE-SET,Direct,🎯 国内流量
+
+  # 已知国外/代理服务优先于国内规则，避免规则集交集造成误直连
+  - RULE-SET,Proxy,🐟 漏网之鱼
+
   # 中国大陆直连：域名走 cn 规则集，裸 IP 走 cnip 规则集。
+  - RULE-SET,cn,🎯 国内流量
+
+  # 已知国外服务的裸 IP 必须先于国内 IP 规则命中。
+  - RULE-SET,ProxyIP,🐟 漏网之鱼,no-resolve
+
   # cnip 带 no-resolve，避免对裸 IP 规则强制触发 DNS 解析。
   # 不使用 GEOIP,CN：ChinaIP 规则集已覆盖，且可避免依赖 geoip 数据库下载。
-  - RULE-SET,cn,🎯 国内流量
   - RULE-SET,cnip,🎯 国内流量,no-resolve
 
   # 漏网之鱼：其余全部流量统一走代理
