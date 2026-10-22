@@ -167,9 +167,8 @@ proxy-groups:
       - 🔗 链式落地
       - 🚀 节点选择
 
-  - name: Gemini
+  - name: ⓖ Gemini
     type: select
-    icon: https://raw.githubusercontent.com/Koolson/Qure/master/IconSet/Color/Google_Search.png
     proxies:
       - 🇺🇸 美国
       - 🇯🇵 日本
@@ -394,7 +393,7 @@ rules:
   - RULE-SET,PrivateIP,DIRECT,no-resolve
 
   # Gemini 单独使用专用策略组；必须先于通用 AI 规则命中
-  - RULE-SET,Gemini,Gemini
+  - RULE-SET,Gemini,ⓖ Gemini
 
   # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
   - RULE-SET,AI,🤖 AI 服务
