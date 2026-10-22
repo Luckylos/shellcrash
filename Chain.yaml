@@ -167,6 +167,17 @@ proxy-groups:
       - 🔗 链式落地
       - 🚀 节点选择
 
+  - name: 🌐 Gemini
+    type: select
+    proxies:
+      - 🇺🇸 美国
+      - 🇯🇵 日本
+      - 🇸🇬 新加坡
+      - 🇭🇰 香港
+      - 其余地区
+      - 🔗 链式落地
+      - 🚀 节点选择
+
   - name: 📲 Telegram
     type: select
     proxies:
@@ -304,6 +315,10 @@ proxy-groups:
     exclude-filter: *filter-chain-or-known-regions
 
 rule-providers:
+  # Gemini 单独使用固定策略组，避免与其他 AI 共用出口
+  Gemini:
+    <<: *rule-set-domain
+    url: https://github.com/666OS/rules/raw/release/mihomo/domain/Gemini.mrs
   AI:
     <<: *rule-set-domain
     url: https://github.com/666OS/rules/raw/release/mihomo/domain/AI.mrs
@@ -376,6 +391,9 @@ rules:
   # 同源规则集补充本地/私网域名与地址
   - RULE-SET,Private,DIRECT
   - RULE-SET,PrivateIP,DIRECT,no-resolve
+
+  # Gemini 单独使用专用策略组；必须先于通用 AI 规则命中
+  - RULE-SET,Gemini,🌐 Gemini
 
   # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
   - RULE-SET,AI,🤖 AI 服务
