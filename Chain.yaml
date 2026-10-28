@@ -319,6 +319,9 @@ rule-providers:
   Google:
     <<: *rule-set-domain
     url: https://github.com/666OS/rules/raw/release/mihomo/domain/Google.mrs
+  GoogleIP:
+    <<: *rule-set-ipcidr
+    url: https://github.com/666OS/rules/raw/release/mihomo/ip/Google.mrs
   AI:
     <<: *rule-set-domain
     url: https://github.com/666OS/rules/raw/release/mihomo/domain/AI.mrs
@@ -392,8 +395,15 @@ rules:
   - RULE-SET,Private,DIRECT
   - RULE-SET,PrivateIP,DIRECT,no-resolve
 
+  # Google 账号、OAuth、区域域名与静态资源的显式补充；Google provider 负责其余 Google 服务规则
+  - DOMAIN-KEYWORD,google,🌐 Google
+  - DOMAIN-SUFFIX,gstatic.com,🌐 Google
+  - DOMAIN-SUFFIX,ggpht.com,🌐 Google
+  - DOMAIN-SUFFIX,oauthz.com,🌐 Google
+
   # Google 服务使用专用策略组；必须先于通用 AI 规则命中
   - RULE-SET,Google,🌐 Google
+  - RULE-SET,GoogleIP,🌐 Google,no-resolve
 
   # AI 走独立策略组（放在国内规则之前，避免国内规则集误收 AI 域名）
   - RULE-SET,AI,🤖 AI 服务
